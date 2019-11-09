@@ -1,8 +1,13 @@
 #include <ctype.h>
 #include <stdio.h>
 
-// #define LOG(x) do { printf x; } while (0)
+#define DEBUG 1
+
+#if DEBUG
+#define LOG(x) do { printf x; } while (0)
+#else
 #define LOG(x) do {} while (0)
+#endif
 
 #define STACK_SET_INC(sa, sp, s) \
     ( \
