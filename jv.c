@@ -24,7 +24,8 @@ enum Stack {
 
 enum State {
     STATE_INIT,
-    STATE_STRING,
+    STATE_SSQ,
+    STATE_SDQ,
     STATE_ARRAY_ELEM,
     STATE_HASH_KEY,
     STATE_HASH_VALUE,
@@ -43,9 +44,18 @@ int valid(FILE* fp) {
             done = 1;
             continue;
         }
-        if (STACK_GET(sa, sp) == STATE_STRING) {
+        if (STACK_GET(sa, sp) == STATE_SSQ) {
+            if (c == '\'') {
+                LOG(("EOSQ\n"));
+                if (!STACK_DEC(sa, sp)) {
+                    LOG(("UNDERFLOW\n"));
+                }
+            }
+            continue;
+        }
+        if (STACK_GET(sa, sp) == STATE_SDQ) {
             if (c == '"') {
-                LOG(("EOS\n"));
+                LOG(("EODQ\n"));
                 if (!STACK_DEC(sa, sp)) {
                     LOG(("UNDERFLOW\n"));
                 }
@@ -85,8 +95,16 @@ int valid(FILE* fp) {
                 }
                 break;
             case '"':
-                LOG(("BOS\n"));
-                if (!STACK_SET_INC(sa, sp, STATE_STRING)) {
+                LOG(("BODQ\n"));
+                if (!STACK_SET_INC(sa, sp, STATE_SDQ)) {
+                    LOG(("OVERFLOW\n"));
+                    ok = 0;
+                    done = 1;
+                }
+                break;
+            case '\'':
+                LOG(("BOSQ\n"));
+                if (!STACK_SET_INC(sa, sp, STATE_SSQ)) {
                     LOG(("OVERFLOW\n"));
                     ok = 0;
                     done = 1;
