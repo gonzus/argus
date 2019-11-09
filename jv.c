@@ -6,7 +6,7 @@
 
 #define STACK_SET_INC(sa, sp, s) \
     ( \
-        (++sp >= STACK_MAX_DEPTH) ? 0 : (sa[sp] = s, 1) \
+        (++sp >= STACK_MAX_DEPTH) ? 0 : (sa[sp] = s, max_depth < sp ? max_depth = sp : 1, 1) \
     )
 #define STACK_SET(sa, sp, s) \
     ( \
@@ -33,11 +33,14 @@ enum State {
     STATE_HASH_VALUE,
 };
 
+static int max_depth = 0;
+
 int valid(FILE* fp) {
     int ok = 1;
     int done = 0;
     int sa[STACK_MAX_DEPTH];
     int sp = 0;
+    max_depth = 0;
     STACK_SET(sa, sp, STATE_INIT);
     while (!done) {
         int c = getc(fp);
@@ -158,6 +161,7 @@ int valid(FILE* fp) {
                 break;
         }
     }
+    printf("max_depth: %d\n", max_depth);
     return ok && sp == 0 && STACK_GET(sa, sp) == STATE_INIT;
 }
 
