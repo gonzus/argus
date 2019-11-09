@@ -1,8 +1,12 @@
 # CFLAGS += -g
+CFLAGS += -O
+
+# LDFLAGS += -lprofiler
 
 first: all
 
 jv: jv.o
+	cc $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 jv.o: jv.c
 
