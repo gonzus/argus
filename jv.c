@@ -3,6 +3,25 @@
 
 #define LOG(x) printf x
 
+#define STACK_SET_INC(sa, sp, s) \
+    ( \
+        (++sp >= STACK_MAX_DEPTH) ? 0 : (sa[sp] = s, 1) \
+    )
+#define STACK_SET(sa, sp, s) \
+    ( \
+        sa[sp] = s, 1 \
+    )
+#define STACK_DEC(sa, sp) \
+    ( \
+        (--sp < 0) ? 0 : 1 \
+    )
+#define STACK_GET(sa, sp) \
+    sa[sp]
+
+enum Stack {
+    STACK_MAX_DEPTH = 1024,
+};
+
 enum State {
     STATE_INIT,
     STATE_STRING,
@@ -14,9 +33,9 @@ enum State {
 int valid(FILE* fp) {
     int ok = 1;
     int done = 0;
-    int sa[1024];
+    int sa[STACK_MAX_DEPTH];
     int sp = 0;
-    sa[sp] = STATE_INIT;
+    STACK_SET(sa, sp, STATE_INIT);
     while (!done) {
         int c = getc(fp);
         if (c == EOF) {
@@ -24,10 +43,12 @@ int valid(FILE* fp) {
             done = 1;
             continue;
         }
-        if (sa[sp] == STATE_STRING) {
+        if (STACK_GET(sa, sp) == STATE_STRING) {
             if (c == '"') {
                 LOG(("EOS\n"));
-                --sp;
+                if (!STACK_DEC(sa, sp)) {
+                    LOG(("UNDERFLOW\n"));
+                }
             }
             continue;
         }
@@ -37,32 +58,48 @@ int valid(FILE* fp) {
         switch (c) {
             case '[':
                 LOG(("BOA\n"));
-                sa[++sp] = STATE_ARRAY_ELEM;
+                if (!STACK_SET_INC(sa, sp, STATE_ARRAY_ELEM)) {
+                    LOG(("OVERFLOW\n"));
+                    ok = 0;
+                    done = 1;
+                }
                 break;
             case ']':
                 LOG(("EOA\n"));
-                --sp;
+                if (!STACK_DEC(sa, sp)) {
+                    LOG(("UNDERFLOW\n"));
+                }
                 break;
             case '{':
                 LOG(("BOH\n"));
-                sa[++sp] = STATE_HASH_KEY;
+                if (!STACK_SET_INC(sa, sp, STATE_HASH_KEY)) {
+                    LOG(("OVERFLOW\n"));
+                    ok = 0;
+                    done = 1;
+                }
                 break;
             case '}':
                 LOG(("EOH\n"));
-                --sp;
+                if (!STACK_DEC(sa, sp)) {
+                    LOG(("UNDERFLOW\n"));
+                }
                 break;
             case '"':
                 LOG(("BOS\n"));
-                sa[++sp] = STATE_STRING;
+                if (!STACK_SET_INC(sa, sp, STATE_STRING)) {
+                    LOG(("OVERFLOW\n"));
+                    ok = 0;
+                    done = 1;
+                }
                 break;
             case ',':
-                switch (sa[sp]) {
+                switch (STACK_GET(sa, sp)) {
                     case STATE_ARRAY_ELEM:
                         LOG(("AE\n"));
                         break;
                     case STATE_HASH_VALUE:
                         LOG(("HK\n"));
-                        sa[sp] = STATE_HASH_KEY;
+                        STACK_SET(sa, sp, STATE_HASH_KEY);
                         break;
                     default:
                         /* ERROR */
@@ -72,10 +109,10 @@ int valid(FILE* fp) {
                 }
                 break;
             case ':':
-                switch (sa[sp]) {
+                switch (STACK_GET(sa, sp)) {
                     case STATE_HASH_KEY:
                         LOG(("HV\n"));
-                        sa[sp] = STATE_HASH_VALUE;
+                        STACK_SET(sa, sp, STATE_HASH_VALUE);
                         break;
                     default:
                         /* ERROR */
@@ -88,7 +125,7 @@ int valid(FILE* fp) {
                 break;
         }
     }
-    return ok && sp == 0 && sa[sp] == STATE_INIT;
+    return ok && sp == 0 && STACK_GET(sa, sp) == STATE_INIT;
 }
 
 void process(const char* name, FILE* fp) {
