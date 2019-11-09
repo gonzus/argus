@@ -1,7 +1,8 @@
 #include <ctype.h>
 #include <stdio.h>
 
-#define LOG(x) printf x
+// #define LOG(x) do { printf x; } while (0)
+#define LOG(x) do {} while (0)
 
 #define STACK_SET_INC(sa, sp, s) \
     ( \
@@ -26,6 +27,7 @@ enum State {
     STATE_INIT,
     STATE_SSQ,
     STATE_SDQ,
+    STATE_BACKSLASH,
     STATE_ARRAY_ELEM,
     STATE_HASH_KEY,
     STATE_HASH_VALUE,
@@ -44,17 +46,30 @@ int valid(FILE* fp) {
             done = 1;
             continue;
         }
-        if (STACK_GET(sa, sp) == STATE_SSQ) {
-            if (c == '\'') {
+        if (STACK_GET(sa, sp) == STATE_BACKSLASH) {
+            LOG(("EOBS\n"));
+            if (!STACK_DEC(sa, sp)) {
+                LOG(("UNDERFLOW\n"));
+            }
+            continue;
+        }
+        if (STACK_GET(sa, sp) == STATE_SDQ ||
+            STACK_GET(sa, sp) == STATE_SSQ) {
+            if (c == '\\') {
+                LOG(("BOBS\n"));
+                if (!STACK_SET_INC(sa, sp, STATE_BACKSLASH)) {
+                    LOG(("OVERFLOW\n"));
+                    ok = 0;
+                    done = 1;
+                }
+            }
+            if (c == '\'' && STACK_GET(sa, sp) == STATE_SSQ) {
                 LOG(("EOSQ\n"));
                 if (!STACK_DEC(sa, sp)) {
                     LOG(("UNDERFLOW\n"));
                 }
             }
-            continue;
-        }
-        if (STACK_GET(sa, sp) == STATE_SDQ) {
-            if (c == '"') {
+            if (c == '\"' && STACK_GET(sa, sp) == STATE_SDQ) {
                 LOG(("EODQ\n"));
                 if (!STACK_DEC(sa, sp)) {
                     LOG(("UNDERFLOW\n"));

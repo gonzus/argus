@@ -1,3 +1,5 @@
+# CFLAGS += -g
+
 first: all
 
 jv: jv.o
