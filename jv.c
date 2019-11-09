@@ -1,7 +1,7 @@
 #include <ctype.h>
 #include <stdio.h>
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if DEBUG
 #define LOG(x) do { printf x; } while (0)
@@ -33,21 +33,24 @@ enum State {
     STATE_NUMBER,
     STATE_STRING_SINGLE,
     STATE_STRING_DOUBLE,
-    STATE_BACKSLASH,
     STATE_ARRAY_ELEM,
     STATE_HASH_KEY,
     STATE_HASH_VALUE,
 };
 
 static int max_depth = 0;
+static int max_len = 0;
 
 int valid(FILE* fp) {
     int ok = 1;
     int done = 0;
     int number = 0;
+    char string[1024*1024];
+    int len = 0;
     int sa[STACK_MAX_DEPTH];
     int sp = 0;
     max_depth = 0;
+    max_len = 0;
     STACK_SET(sa, sp, STATE_SPACE);
     while (!done) {
         int c = getc(fp);
@@ -56,40 +59,39 @@ int valid(FILE* fp) {
             done = 1;
             continue;
         }
-        if (STACK_GET(sa, sp) == STATE_BACKSLASH) {
-            LOG(("EOBS\n"));
-            if (!STACK_DEC(sa, sp)) {
-                LOG(("UNDERFLOW\n"));
-                ok = 0;
-                done = 1;
-            }
-            continue;
-        }
         if (STACK_GET(sa, sp) == STATE_STRING_DOUBLE ||
             STACK_GET(sa, sp) == STATE_STRING_SINGLE) {
-            if (c == '\\') {
-                LOG(("BOBS\n"));
-                if (!STACK_SET_INC(sa, sp, STATE_BACKSLASH)) {
-                    LOG(("OVERFLOW\n"));
-                    ok = 0;
-                    done = 1;
-                }
-            }
             if (c == '\'' && STACK_GET(sa, sp) == STATE_STRING_SINGLE) {
-                LOG(("EOSQ\n"));
+                string[len] = '\0';
+                LOG(("EOSQ [%d:%s]\n", len, string));
                 if (!STACK_DEC(sa, sp)) {
                     LOG(("UNDERFLOW\n"));
                     ok = 0;
                     done = 1;
                 }
+                continue;
             }
             if (c == '\"' && STACK_GET(sa, sp) == STATE_STRING_DOUBLE) {
-                LOG(("EODQ\n"));
+                string[len] = '\0';
+                LOG(("EODQ [%d:%s]\n", len, string));
                 if (!STACK_DEC(sa, sp)) {
                     LOG(("UNDERFLOW\n"));
                     ok = 0;
                     done = 1;
                 }
+                continue;
+            }
+            if (c == '\\') {
+                c = getc(fp);
+                if (c == EOF) {
+                    LOG(("EOF\n"));
+                    done = 1;
+                    continue;
+                }
+            }
+            string[len++] = c;
+            if (max_len < len) {
+                max_len = len;
             }
             continue;
         }
@@ -165,8 +167,9 @@ int valid(FILE* fp) {
                     done = 1;
                 }
                 break;
-            case '"':
+            case '\"':
                 LOG(("BODQ\n"));
+                len = 0;
                 if (!STACK_SET_INC(sa, sp, STATE_STRING_DOUBLE)) {
                     LOG(("OVERFLOW\n"));
                     ok = 0;
@@ -175,6 +178,7 @@ int valid(FILE* fp) {
                 break;
             case '\'':
                 LOG(("BOSQ\n"));
+                len = 0;
                 if (!STACK_SET_INC(sa, sp, STATE_STRING_SINGLE)) {
                     LOG(("OVERFLOW\n"));
                     ok = 0;
@@ -214,7 +218,7 @@ int valid(FILE* fp) {
                 break;
         }
     }
-    printf("max_depth: %d\n", max_depth);
+    printf("max_depth: %d -- max_len: %d\n", max_depth, max_len);
     return ok && sp == 0 && STACK_GET(sa, sp) == STATE_SPACE;
 }
 
