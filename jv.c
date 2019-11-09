@@ -29,9 +29,10 @@ enum Stack {
 };
 
 enum State {
-    STATE_INIT,
-    STATE_SSQ,
-    STATE_SDQ,
+    STATE_SPACE,
+    STATE_NUMBER,
+    STATE_STRING_SINGLE,
+    STATE_STRING_DOUBLE,
     STATE_BACKSLASH,
     STATE_ARRAY_ELEM,
     STATE_HASH_KEY,
@@ -43,10 +44,11 @@ static int max_depth = 0;
 int valid(FILE* fp) {
     int ok = 1;
     int done = 0;
+    int number = 0;
     int sa[STACK_MAX_DEPTH];
     int sp = 0;
     max_depth = 0;
-    STACK_SET(sa, sp, STATE_INIT);
+    STACK_SET(sa, sp, STATE_SPACE);
     while (!done) {
         int c = getc(fp);
         if (c == EOF) {
@@ -58,11 +60,13 @@ int valid(FILE* fp) {
             LOG(("EOBS\n"));
             if (!STACK_DEC(sa, sp)) {
                 LOG(("UNDERFLOW\n"));
+                ok = 0;
+                done = 1;
             }
             continue;
         }
-        if (STACK_GET(sa, sp) == STATE_SDQ ||
-            STACK_GET(sa, sp) == STATE_SSQ) {
+        if (STACK_GET(sa, sp) == STATE_STRING_DOUBLE ||
+            STACK_GET(sa, sp) == STATE_STRING_SINGLE) {
             if (c == '\\') {
                 LOG(("BOBS\n"));
                 if (!STACK_SET_INC(sa, sp, STATE_BACKSLASH)) {
@@ -71,24 +75,64 @@ int valid(FILE* fp) {
                     done = 1;
                 }
             }
-            if (c == '\'' && STACK_GET(sa, sp) == STATE_SSQ) {
+            if (c == '\'' && STACK_GET(sa, sp) == STATE_STRING_SINGLE) {
                 LOG(("EOSQ\n"));
                 if (!STACK_DEC(sa, sp)) {
                     LOG(("UNDERFLOW\n"));
+                    ok = 0;
+                    done = 1;
                 }
             }
-            if (c == '\"' && STACK_GET(sa, sp) == STATE_SDQ) {
+            if (c == '\"' && STACK_GET(sa, sp) == STATE_STRING_DOUBLE) {
                 LOG(("EODQ\n"));
                 if (!STACK_DEC(sa, sp)) {
                     LOG(("UNDERFLOW\n"));
+                    ok = 0;
+                    done = 1;
                 }
             }
             continue;
         }
-        if (isspace(c)) {
-            continue;
+        if (STACK_GET(sa, sp) == STATE_NUMBER) {
+            if (c >= '0' && c <= '9') {
+                number = number * 10 + c - '0';
+                continue;
+            } else {
+                LOG(("EON %d\n", number));
+                if (!STACK_DEC(sa, sp)) {
+                    LOG(("UNDERFLOW\n"));
+                    ok = 0;
+                    done = 1;
+                }
+                // we don't continue in this case
+                // need to process the character that terminated the number
+            }
         }
         switch (c) {
+            case ' ':
+            case '\t':
+            case '\r':
+            case '\n':
+            case '\f':
+                break;
+            case '0':
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
+                LOG(("BON\n"));
+                if (!STACK_SET_INC(sa, sp, STATE_NUMBER)) {
+                    LOG(("OVERFLOW\n"));
+                    ok = 0;
+                    done = 1;
+                }
+                number = c - '0';
+                break;
             case '[':
                 LOG(("BOA\n"));
                 if (!STACK_SET_INC(sa, sp, STATE_ARRAY_ELEM)) {
@@ -101,6 +145,8 @@ int valid(FILE* fp) {
                 LOG(("EOA\n"));
                 if (!STACK_DEC(sa, sp)) {
                     LOG(("UNDERFLOW\n"));
+                    ok = 0;
+                    done = 1;
                 }
                 break;
             case '{':
@@ -115,11 +161,13 @@ int valid(FILE* fp) {
                 LOG(("EOH\n"));
                 if (!STACK_DEC(sa, sp)) {
                     LOG(("UNDERFLOW\n"));
+                    ok = 0;
+                    done = 1;
                 }
                 break;
             case '"':
                 LOG(("BODQ\n"));
-                if (!STACK_SET_INC(sa, sp, STATE_SDQ)) {
+                if (!STACK_SET_INC(sa, sp, STATE_STRING_DOUBLE)) {
                     LOG(("OVERFLOW\n"));
                     ok = 0;
                     done = 1;
@@ -127,7 +175,7 @@ int valid(FILE* fp) {
                 break;
             case '\'':
                 LOG(("BOSQ\n"));
-                if (!STACK_SET_INC(sa, sp, STATE_SSQ)) {
+                if (!STACK_SET_INC(sa, sp, STATE_STRING_SINGLE)) {
                     LOG(("OVERFLOW\n"));
                     ok = 0;
                     done = 1;
@@ -167,12 +215,12 @@ int valid(FILE* fp) {
         }
     }
     printf("max_depth: %d\n", max_depth);
-    return ok && sp == 0 && STACK_GET(sa, sp) == STATE_INIT;
+    return ok && sp == 0 && STACK_GET(sa, sp) == STATE_SPACE;
 }
 
 void process(const char* name, FILE* fp) {
     int v = valid(fp);
-    printf("File '%s' %s valid\n", name, v ? "IS" : "IS NOT");
+    printf("%-3.3s %s\n", v ? "OK" : "BAD", name);
 }
 
 int main(int argc, char* argv[]) {
