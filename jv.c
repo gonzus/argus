@@ -42,7 +42,7 @@ enum State {
 static int max_depth = 0;
 static int max_len = 0;
 
-int valid(const unsigned char* data, int len) {
+static int valid(const unsigned char* data, int len) {
     int ok = 1;
     int done = 0;
     int number = 0;
@@ -166,15 +166,36 @@ int valid(const unsigned char* data, int len) {
     return ok && sp == 0 && STACK_GET(sa, sp) == STATE_SCALAR;
 }
 
-void process(const char* name, FILE* fp) {
-    int fd = open(name, O_RDONLY);
-    struct stat st;
-    fstat(fd, &st);
-    int size = st.st_size;
-    unsigned char* data = (unsigned char*) mmap (0, size, PROT_READ, MAP_PRIVATE, fd, 0);
-    close(fd);
-    int v = valid(data, size);
-    printf("%-3.3s %s\n", v ? "OK" : "BAD", name);
+static void process(const char* name) {
+    int fd = -1;
+    do {
+        fd = open(name, O_RDONLY);
+        if (fd < 0) {
+            fprintf(stderr, "Cannot open [%s]\n", name);
+            break;
+        }
+
+        struct stat st;
+        int status = fstat(fd, &st);
+        if (status < 0) {
+            fprintf(stderr, "Cannot stat [%s]\n", name);
+            break;
+        }
+        int size = st.st_size;
+
+        unsigned char* data = (unsigned char*) mmap (0, size, PROT_READ, MAP_PRIVATE, fd, 0);
+        if (data == MAP_FAILED) {
+            fprintf(stderr, "Cannot mmap [%s]\n", name);
+            break;
+        }
+
+        int v = valid(data, size);
+        printf("%-3.3s %s\n", v ? "OK" : "BAD", name);
+    } while (0);
+    if (fd >= 0) {
+        close(fd);
+        fd = -1;
+    }
 }
 
 int main(int argc, char* argv[]) {
