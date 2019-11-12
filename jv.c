@@ -1,5 +1,9 @@
 #include <ctype.h>
+#include <fcntl.h>
 #include <stdio.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
 
 #define DEBUG 0
 
@@ -29,10 +33,7 @@ enum Stack {
 };
 
 enum State {
-    STATE_SPACE,
-    STATE_NUMBER,
-    STATE_STRING_SINGLE,
-    STATE_STRING_DOUBLE,
+    STATE_SCALAR,
     STATE_ARRAY_ELEM,
     STATE_HASH_KEY,
     STATE_HASH_VALUE,
@@ -41,78 +42,61 @@ enum State {
 static int max_depth = 0;
 static int max_len = 0;
 
-int valid(FILE* fp) {
+int valid(const unsigned char* data, int len) {
     int ok = 1;
     int done = 0;
     int number = 0;
     char string[1024*1024];
-    int len = 0;
+    int slen = 0;
     int sa[STACK_MAX_DEPTH];
     int sp = 0;
     max_depth = 0;
     max_len = 0;
-    STACK_SET(sa, sp, STATE_SPACE);
-    while (!done) {
-        int c = getc(fp);
-        if (c == EOF) {
-            LOG(("EOF\n"));
-            done = 1;
-            continue;
-        }
+    STACK_SET(sa, sp, STATE_SCALAR);
+    for (int p = 0; !done && p < len; ) {
+        int c = data[p++];
         if (c == '\'' || c == '\"') {
             int b = c;
-            len = 0;
-            while (1) {
-                c = getc(fp);
+            slen = 0;
+            while (p < len) {
+                c = data[p++];
                 if (c == b) {
-                    string[len] = '\0';
-                    LOG(("EOS [%d:%s]\n", len, string));
+                    string[slen] = '\0';
+                    LOG(("EOS [%d:%s]\n", slen, string));
+                    if (max_len < slen) {
+                        max_len = slen;
+                    }
                     break;
                 }
                 if (c == '\\') {
-                    c = getc(fp);
+                    c = data[p++];
                 }
-                if (c == EOF) {
-                    LOG(("EOF\n"));
-                    done = 1;
-                } else {
-                    string[len++] = c;
-                    if (max_len < len) {
-                        max_len = len;
-                    }
-                    continue;
-                }
-                break;
+                string[slen++] = c;
+                continue;
             }
             continue;
         }
 
         if (isdigit(c)) {
             number = c - '0';
-            while (1) {
-                c = getc(fp);
+            while (p < len) {
+                c = data[p++];
                 if (isdigit(c)) {
                     number = number * 10 + c - '0';
                     continue;
-                } else if (c == EOF) {
-                    LOG(("EOF\n"));
-                    done = 1;
                 } else {
-                    ungetc(c, fp);
+                    --p;
                     LOG(("EON [%d]\n", number));
                 }
                 break;
             }
             continue;
         }
+        if (isspace(c)) {
+            continue;
+        }
 
         switch (c) {
-            case ' ':
-            case '\t':
-            case '\r':
-            case '\n':
-            case '\f':
-                break;
             case '[':
                 LOG(("BOA\n"));
                 if (!STACK_SET_INC(sa, sp, STATE_ARRAY_ELEM)) {
@@ -179,27 +163,23 @@ int valid(FILE* fp) {
         }
     }
     printf("max_depth: %d -- max_len: %d\n", max_depth, max_len);
-    return ok && sp == 0 && STACK_GET(sa, sp) == STATE_SPACE;
+    return ok && sp == 0 && STACK_GET(sa, sp) == STATE_SCALAR;
 }
 
 void process(const char* name, FILE* fp) {
-    int v = valid(fp);
+    int fd = open(name, O_RDONLY);
+    struct stat st;
+    fstat(fd, &st);
+    int size = st.st_size;
+    unsigned char* data = (unsigned char*) mmap (0, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    int v = valid(data, size);
     printf("%-3.3s %s\n", v ? "OK" : "BAD", name);
 }
 
 int main(int argc, char* argv[]) {
-    if (argc <= 1) {
-        process("<STDIN>", stdin);
-    } else {
-        for (int j = 1; j < argc; ++j) {
-            FILE* fp = fopen(argv[j], "r");
-            if (!fp) {
-                fprintf(stderr, "Could not open file '%s'\n", argv[j]);
-                continue;
-            }
-            process(argv[j], fp);
-            fclose(fp);
-        }
+    for (int j = 1; j < argc; ++j) {
+        process(argv[j]);
     }
     return 0;
 }
