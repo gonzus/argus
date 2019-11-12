@@ -55,6 +55,15 @@ static int valid(const unsigned char* data, int len) {
     STACK_SET(sa, sp, STATE_SCALAR);
     for (int p = 0; !done && p < len; ) {
         int c = data[p++];
+        if (c == '#') {
+            while (p < len) {
+                c = data[p++];
+                if (c == '\n') {
+                    break;
+                }
+            }
+            continue;
+        }
         if (c == '\'' || c == '\"') {
             int b = c;
             slen = 0;

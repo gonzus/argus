@@ -1,1 +1,8 @@
-{"nico \"handsome\"":3, 'sofi \'pretty\'': 4,}
+{
+    "gonzo 'parent'": 1966,
+    "nico \"handsome\"": 2005,
+    # yes, we accept single quotes too (and comments!)
+    'ale "beautiful"': 1971,
+    'sofi \'pretty\'': 2002,  # ... and trailing commas too
+
+}
