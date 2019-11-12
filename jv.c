@@ -59,81 +59,59 @@ int valid(FILE* fp) {
             done = 1;
             continue;
         }
-        if (STACK_GET(sa, sp) == STATE_STRING_DOUBLE ||
-            STACK_GET(sa, sp) == STATE_STRING_SINGLE) {
-            if (c == '\'' && STACK_GET(sa, sp) == STATE_STRING_SINGLE) {
-                string[len] = '\0';
-                LOG(("EOSQ [%d:%s]\n", len, string));
-                if (!STACK_DEC(sa, sp)) {
-                    LOG(("UNDERFLOW\n"));
-                    ok = 0;
-                    done = 1;
-                }
-                continue;
-            }
-            if (c == '\"' && STACK_GET(sa, sp) == STATE_STRING_DOUBLE) {
-                string[len] = '\0';
-                LOG(("EODQ [%d:%s]\n", len, string));
-                if (!STACK_DEC(sa, sp)) {
-                    LOG(("UNDERFLOW\n"));
-                    ok = 0;
-                    done = 1;
-                }
-                continue;
-            }
-            if (c == '\\') {
+        if (c == '\'' || c == '\"') {
+            int b = c;
+            len = 0;
+            while (1) {
                 c = getc(fp);
+                if (c == b) {
+                    string[len] = '\0';
+                    LOG(("EOS [%d:%s]\n", len, string));
+                    break;
+                }
+                if (c == '\\') {
+                    c = getc(fp);
+                }
                 if (c == EOF) {
                     LOG(("EOF\n"));
                     done = 1;
+                } else {
+                    string[len++] = c;
+                    if (max_len < len) {
+                        max_len = len;
+                    }
                     continue;
                 }
-            }
-            string[len++] = c;
-            if (max_len < len) {
-                max_len = len;
+                break;
             }
             continue;
         }
-        if (STACK_GET(sa, sp) == STATE_NUMBER) {
-            if (c >= '0' && c <= '9') {
-                number = number * 10 + c - '0';
-                continue;
-            } else {
-                LOG(("EON %d\n", number));
-                if (!STACK_DEC(sa, sp)) {
-                    LOG(("UNDERFLOW\n"));
-                    ok = 0;
+
+        if (isdigit(c)) {
+            number = c - '0';
+            while (1) {
+                c = getc(fp);
+                if (isdigit(c)) {
+                    number = number * 10 + c - '0';
+                    continue;
+                } else if (c == EOF) {
+                    LOG(("EOF\n"));
                     done = 1;
+                } else {
+                    ungetc(c, fp);
+                    LOG(("EON [%d]\n", number));
                 }
-                // we don't continue in this case
-                // need to process the character that terminated the number
+                break;
             }
+            continue;
         }
+
         switch (c) {
             case ' ':
             case '\t':
             case '\r':
             case '\n':
             case '\f':
-                break;
-            case '0':
-            case '1':
-            case '2':
-            case '3':
-            case '4':
-            case '5':
-            case '6':
-            case '7':
-            case '8':
-            case '9':
-                LOG(("BON\n"));
-                if (!STACK_SET_INC(sa, sp, STATE_NUMBER)) {
-                    LOG(("OVERFLOW\n"));
-                    ok = 0;
-                    done = 1;
-                }
-                number = c - '0';
                 break;
             case '[':
                 LOG(("BOA\n"));
@@ -163,24 +141,6 @@ int valid(FILE* fp) {
                 LOG(("EOH\n"));
                 if (!STACK_DEC(sa, sp)) {
                     LOG(("UNDERFLOW\n"));
-                    ok = 0;
-                    done = 1;
-                }
-                break;
-            case '\"':
-                LOG(("BODQ\n"));
-                len = 0;
-                if (!STACK_SET_INC(sa, sp, STATE_STRING_DOUBLE)) {
-                    LOG(("OVERFLOW\n"));
-                    ok = 0;
-                    done = 1;
-                }
-                break;
-            case '\'':
-                LOG(("BOSQ\n"));
-                len = 0;
-                if (!STACK_SET_INC(sa, sp, STATE_STRING_SINGLE)) {
-                    LOG(("OVERFLOW\n"));
                     ok = 0;
                     done = 1;
                 }
