@@ -42,7 +42,7 @@ enum State {
 static int max_depth = 0;
 static int max_len = 0;
 
-static int valid(const unsigned char* data, int len) {
+int validate_string(const unsigned char* data, int len) {
     int ok = 1;
     int done = 0;
     int number = 0;
@@ -175,7 +175,8 @@ static int valid(const unsigned char* data, int len) {
     return ok && sp == 0 && STACK_GET(sa, sp) == STATE_SCALAR;
 }
 
-static void process(const char* name) {
+int validate_file(const char* name) {
+    int ok = 0;
     int fd = -1;
     do {
         fd = open(name, O_RDONLY);
@@ -198,18 +199,20 @@ static void process(const char* name) {
             break;
         }
 
-        int v = valid(data, size);
-        printf("%-3.3s %s\n", v ? "OK" : "BAD", name);
+        ok = validate_string(data, size);
     } while (0);
     if (fd >= 0) {
         close(fd);
         fd = -1;
     }
+    return ok;
 }
 
 int main(int argc, char* argv[]) {
     for (int j = 1; j < argc; ++j) {
-        process(argv[j]);
+        const char* name = argv[j];
+        int ok = validate_file(name);
+        printf("%-3.3s %s\n", ok ? "OK" : "BAD", name);
     }
     return 0;
 }
