@@ -178,12 +178,16 @@ int validate_string(const unsigned char* data, int len) {
 int validate_file(const char* name) {
     int ok = 0;
     int fd = -1;
+    unsigned char* data = 0;
+    int size = 0;
+
     do {
         fd = open(name, O_RDONLY);
         if (fd < 0) {
             fprintf(stderr, "Cannot open [%s]\n", name);
             break;
         }
+        LOG(("Opened file [%s]\n", name));
 
         struct stat st;
         int status = fstat(fd, &st);
@@ -191,20 +195,36 @@ int validate_file(const char* name) {
             fprintf(stderr, "Cannot stat [%s]\n", name);
             break;
         }
-        int size = st.st_size;
+        size = st.st_size;
 
-        unsigned char* data = (unsigned char*) mmap (0, size, PROT_READ, MAP_PRIVATE, fd, 0);
+        data = (unsigned char*) mmap (0, size, PROT_READ, MAP_PRIVATE, fd, 0);
         if (data == MAP_FAILED) {
             fprintf(stderr, "Cannot mmap [%s]\n", name);
+            data = 0;
             break;
         }
 
+        LOG(("Mapped file [%s]\n", name));
         ok = validate_string(data, size);
     } while (0);
-    if (fd >= 0) {
-        close(fd);
-        fd = -1;
+
+    if (data) {
+        int rc = munmap(data, size);
+        if (rc < 0) {
+            fprintf(stderr, "Cannot unmap [%s]\n", name);
+        }
+        data = 0;
+        LOG(("Unmapped file [%s]\n", name));
     }
+    if (fd >= 0) {
+        int rc = close(fd);
+        if (rc < 0) {
+            fprintf(stderr, "Cannot close [%s]\n", name);
+        }
+        fd = -1;
+        LOG(("Closed file [%s]\n", name));
+    }
+
     return ok;
 }
 
