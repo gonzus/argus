@@ -43,7 +43,7 @@ static int max_depth = 0;
 static int max_len = 0;
 
 int validate_string(const unsigned char* data, int len) {
-    int ok = 1;
+    int valid = 1;
     int done = 0;
     int number = 0;
     char string[1024*1024];
@@ -110,7 +110,7 @@ int validate_string(const unsigned char* data, int len) {
                 LOG(("BOA\n"));
                 if (!STACK_SET_INC(sa, sp, STATE_ARRAY_ELEM)) {
                     LOG(("OVERFLOW\n"));
-                    ok = 0;
+                    valid = 0;
                     done = 1;
                 }
                 break;
@@ -118,7 +118,7 @@ int validate_string(const unsigned char* data, int len) {
                 LOG(("EOA\n"));
                 if (!STACK_DEC(sa, sp)) {
                     LOG(("UNDERFLOW\n"));
-                    ok = 0;
+                    valid = 0;
                     done = 1;
                 }
                 break;
@@ -126,7 +126,7 @@ int validate_string(const unsigned char* data, int len) {
                 LOG(("BOH\n"));
                 if (!STACK_SET_INC(sa, sp, STATE_HASH_KEY)) {
                     LOG(("OVERFLOW\n"));
-                    ok = 0;
+                    valid = 0;
                     done = 1;
                 }
                 break;
@@ -134,7 +134,7 @@ int validate_string(const unsigned char* data, int len) {
                 LOG(("EOH\n"));
                 if (!STACK_DEC(sa, sp)) {
                     LOG(("UNDERFLOW\n"));
-                    ok = 0;
+                    valid = 0;
                     done = 1;
                 }
                 break;
@@ -149,7 +149,7 @@ int validate_string(const unsigned char* data, int len) {
                         break;
                     default:
                         /* ERROR */
-                        ok = 0;
+                        valid = 0;
                         done = 1;
                         break;
                 }
@@ -162,7 +162,7 @@ int validate_string(const unsigned char* data, int len) {
                         break;
                     default:
                         /* ERROR */
-                        ok = 0;
+                        valid = 0;
                         done = 1;
                         break;
                 }
@@ -172,11 +172,11 @@ int validate_string(const unsigned char* data, int len) {
         }
     }
     printf("max_depth: %d -- max_len: %d\n", max_depth, max_len);
-    return ok && sp == 0 && STACK_GET(sa, sp) == STATE_SCALAR;
+    return valid && sp == 0 && STACK_GET(sa, sp) == STATE_SCALAR;
 }
 
 int validate_file(const char* name) {
-    int ok = 0;
+    int valid = 0;
     int fd = -1;
     unsigned char* data = 0;
     int size = 0;
@@ -187,7 +187,7 @@ int validate_file(const char* name) {
             fprintf(stderr, "Cannot open [%s]\n", name);
             break;
         }
-        LOG(("Opened file [%s]\n", name));
+        LOG(("Opened file [%s] as descriptor %d\n", name, fd));
 
         struct stat st;
         int status = fstat(fd, &st);
@@ -204,35 +204,35 @@ int validate_file(const char* name) {
             break;
         }
 
-        LOG(("Mapped file [%s]\n", name));
-        ok = validate_string(data, size);
+        LOG(("Mapped file [%s] at %p\n", name, data));
+        valid = validate_string(data, size);
     } while (0);
 
     if (data) {
         int rc = munmap(data, size);
         if (rc < 0) {
-            fprintf(stderr, "Cannot unmap [%s]\n", name);
+            fprintf(stderr, "Cannot unmap [%s] from %p\n", name, data);
         }
+        LOG(("Unmapped file [%s] from %p\n", name, data));
         data = 0;
-        LOG(("Unmapped file [%s]\n", name));
     }
     if (fd >= 0) {
         int rc = close(fd);
         if (rc < 0) {
             fprintf(stderr, "Cannot close [%s]\n", name);
         }
+        LOG(("Closed file [%s] as descriptor %d\n", name, fd));
         fd = -1;
-        LOG(("Closed file [%s]\n", name));
     }
 
-    return ok;
+    return valid;
 }
 
 int main(int argc, char* argv[]) {
     for (int j = 1; j < argc; ++j) {
         const char* name = argv[j];
-        int ok = validate_file(name);
-        printf("%-3.3s %s\n", ok ? "OK" : "BAD", name);
+        int valid = validate_file(name);
+        printf("%-3.3s %s\n", valid ? "OK" : "BAD", name);
     }
     return 0;
 }
