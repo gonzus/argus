@@ -5,6 +5,8 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
+#define STACK_MAX_DEPTH 1024
+
 #define DEBUG 0
 
 #if DEBUG
@@ -13,7 +15,7 @@
 #define LOG(x) do {} while (0)
 #endif
 
-#define STACK_SET_INC(sa, sp, s) \
+#define STACK_PUSH(sa, sp, s) \
     ( \
         (++sp >= STACK_MAX_DEPTH) ? 0 : (sa[sp] = s, max_depth < sp ? max_depth = sp : 1, 1) \
     )
@@ -21,16 +23,12 @@
     ( \
         sa[sp] = s, 1 \
     )
-#define STACK_DEC(sa, sp) \
+#define STACK_POP(sa, sp) \
     ( \
         (--sp < 0) ? 0 : 1 \
     )
-#define STACK_GET(sa, sp) \
+#define STACK_TOP(sa, sp) \
     sa[sp]
-
-enum Stack {
-    STACK_MAX_DEPTH = 1024,
-};
 
 enum State {
     STATE_SCALAR,
@@ -44,7 +42,6 @@ static int max_len = 0;
 
 int validate_string(const unsigned char* data, int len) {
     int valid = 1;
-    int done = 0;
     int number = 0;
     char string[1024*1024];
     int slen = 0;
@@ -53,7 +50,7 @@ int validate_string(const unsigned char* data, int len) {
     max_depth = 0;
     max_len = 0;
     STACK_SET(sa, sp, STATE_SCALAR);
-    for (int p = 0; !done && p < len; ) {
+    for (int p = 0; valid && p < len; ) {
         int c = data[p++];
         if (c == '#') {
             while (p < len) {
@@ -81,11 +78,11 @@ int validate_string(const unsigned char* data, int len) {
                     c = data[p++];
                 }
                 string[slen++] = c;
-                continue;
             }
             continue;
         }
 
+        // TODO: handle signs
         if (isdigit(c)) {
             number = c - '0';
             while (p < len) {
@@ -93,14 +90,14 @@ int validate_string(const unsigned char* data, int len) {
                 if (isdigit(c)) {
                     number = number * 10 + c - '0';
                     continue;
-                } else {
-                    --p;
-                    LOG(("EON [%d]\n", number));
                 }
+                --p;
+                LOG(("EON [%d]\n", number));
                 break;
             }
             continue;
         }
+
         if (isspace(c)) {
             continue;
         }
@@ -108,38 +105,34 @@ int validate_string(const unsigned char* data, int len) {
         switch (c) {
             case '[':
                 LOG(("BOA\n"));
-                if (!STACK_SET_INC(sa, sp, STATE_ARRAY_ELEM)) {
+                if (!STACK_PUSH(sa, sp, STATE_ARRAY_ELEM)) {
                     LOG(("OVERFLOW\n"));
                     valid = 0;
-                    done = 1;
                 }
                 break;
             case ']':
                 LOG(("EOA\n"));
-                if (!STACK_DEC(sa, sp)) {
+                if (!STACK_POP(sa, sp)) {
                     LOG(("UNDERFLOW\n"));
                     valid = 0;
-                    done = 1;
                 }
                 break;
             case '{':
                 LOG(("BOH\n"));
-                if (!STACK_SET_INC(sa, sp, STATE_HASH_KEY)) {
+                if (!STACK_PUSH(sa, sp, STATE_HASH_KEY)) {
                     LOG(("OVERFLOW\n"));
                     valid = 0;
-                    done = 1;
                 }
                 break;
             case '}':
                 LOG(("EOH\n"));
-                if (!STACK_DEC(sa, sp)) {
+                if (!STACK_POP(sa, sp)) {
                     LOG(("UNDERFLOW\n"));
                     valid = 0;
-                    done = 1;
                 }
                 break;
             case ',':
-                switch (STACK_GET(sa, sp)) {
+                switch (STACK_TOP(sa, sp)) {
                     case STATE_ARRAY_ELEM:
                         LOG(("AE\n"));
                         break;
@@ -150,12 +143,11 @@ int validate_string(const unsigned char* data, int len) {
                     default:
                         /* ERROR */
                         valid = 0;
-                        done = 1;
                         break;
                 }
                 break;
             case ':':
-                switch (STACK_GET(sa, sp)) {
+                switch (STACK_TOP(sa, sp)) {
                     case STATE_HASH_KEY:
                         LOG(("HV\n"));
                         STACK_SET(sa, sp, STATE_HASH_VALUE);
@@ -163,16 +155,16 @@ int validate_string(const unsigned char* data, int len) {
                     default:
                         /* ERROR */
                         valid = 0;
-                        done = 1;
                         break;
                 }
                 break;
             default:
+                LOG(("HUH?\n"));
                 break;
         }
     }
     printf("max_depth: %d -- max_len: %d\n", max_depth, max_len);
-    return valid && sp == 0 && STACK_GET(sa, sp) == STATE_SCALAR;
+    return valid && sp == 0 && STACK_TOP(sa, sp) == STATE_SCALAR;
 }
 
 int validate_file(const char* name) {
