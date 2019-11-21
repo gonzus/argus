@@ -17,7 +17,7 @@
 
 #define STACK_PUSH(sa, sp, s) \
     ( \
-        (++sp >= STACK_MAX_DEPTH) ? 0 : (sa[sp] = s, max_depth < sp ? max_depth = sp : 1, 1) \
+        (++sp >= STACK_MAX_DEPTH) ? 0 : (sa[sp] = s, 1) \
     )
 #define STACK_SET(sa, sp, s) \
     ( \
@@ -37,9 +37,6 @@ enum State {
     STATE_HASH_VALUE,
 };
 
-static int max_depth = 0;
-static int max_len = 0;
-
 int validate_string(const unsigned char* data, int len) {
     int valid = 1;
     int number = 0;
@@ -47,8 +44,6 @@ int validate_string(const unsigned char* data, int len) {
     int slen = 0;
     int sa[STACK_MAX_DEPTH];
     int sp = 0;
-    max_depth = 0;
-    max_len = 0;
     STACK_SET(sa, sp, STATE_SCALAR);
     for (int p = 0; valid && p < len; ) {
         int c = data[p++];
@@ -69,9 +64,6 @@ int validate_string(const unsigned char* data, int len) {
                 if (c == b) {
                     string[slen] = '\0';
                     LOG(("EOS [%d:%s]\n", slen, string));
-                    if (max_len < slen) {
-                        max_len = slen;
-                    }
                     break;
                 }
                 if (c == '\\') {
@@ -163,7 +155,6 @@ int validate_string(const unsigned char* data, int len) {
                 break;
         }
     }
-    printf("max_depth: %d -- max_len: %d\n", max_depth, max_len);
     return valid && sp == 0 && STACK_TOP(sa, sp) == STATE_SCALAR;
 }
 
