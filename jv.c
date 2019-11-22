@@ -5,6 +5,8 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <log.h>
+#include <slice.h>
+#include <buffer.h>
 
 #define STACK_MAX_DEPTH 1024
 
@@ -30,19 +32,18 @@ enum State {
     STATE_HASH_VALUE,
 };
 
-int validate_string(const unsigned char* data, int len) {
+int validate_slice(Slice s) {
     int valid = 1;
     int number = 0;
-    char string[1024*1024];
-    int slen = 0;
+    Buffer* string = buffer_build_capacity(1024*1024);
     int sa[STACK_MAX_DEPTH];
     int sp = 0;
     STACK_SET(sa, sp, STATE_SCALAR);
-    for (int p = 0; valid && p < len; ) {
-        int c = data[p++];
+    for (int p = 0; valid && p < s.len; ) {
+        int c = s.ptr[p++];
         if (c == '#') {
-            while (p < len) {
-                c = data[p++];
+            while (p < s.len) {
+                c = s.ptr[p++];
                 if (c == '\n') {
                     break;
                 }
@@ -51,18 +52,17 @@ int validate_string(const unsigned char* data, int len) {
         }
         if (c == '\'' || c == '\"') {
             int b = c;
-            slen = 0;
-            while (p < len) {
-                c = data[p++];
+            buffer_clear(string);
+            while (p < s.len) {
+                c = s.ptr[p++];
                 if (c == b) {
-                    string[slen] = '\0';
-                    LOG_DEBUG("EOS [%d:%s]", slen, string);
+                    LOG_DEBUG("EOS [%d:%.*s]", string->pos, string->pos, string->ptr);
                     break;
                 }
                 if (c == '\\') {
-                    c = data[p++];
+                    c = s.ptr[p++];
                 }
-                string[slen++] = c;
+                buffer_append_byte(string, c);
             }
             continue;
         }
@@ -70,8 +70,8 @@ int validate_string(const unsigned char* data, int len) {
         // TODO: handle signs
         if (isdigit(c)) {
             number = c - '0';
-            while (p < len) {
-                c = data[p++];
+            while (p < s.len) {
+                c = s.ptr[p++];
                 if (isdigit(c)) {
                     number = number * 10 + c - '0';
                     continue;
@@ -148,6 +148,7 @@ int validate_string(const unsigned char* data, int len) {
                 break;
         }
     }
+    buffer_destroy(string);
     return valid && sp == 0 && STACK_TOP(sa, sp) == STATE_SCALAR;
 }
 
@@ -181,7 +182,7 @@ int validate_file(const char* name) {
         }
 
         LOG_INFO("Mapped file [%s] at %p", name, data);
-        valid = validate_string(data, size);
+        valid = validate_slice(slice_wrap_ptr_len(data, size));
     } while (0);
 
     if (data) {
