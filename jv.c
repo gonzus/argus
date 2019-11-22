@@ -4,16 +4,9 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <log.h>
 
 #define STACK_MAX_DEPTH 1024
-
-#define DEBUG 0
-
-#if DEBUG
-#define LOG(x) do { printf x; } while (0)
-#else
-#define LOG(x) do {} while (0)
-#endif
 
 #define STACK_PUSH(sa, sp, s) \
     ( \
@@ -63,7 +56,7 @@ int validate_string(const unsigned char* data, int len) {
                 c = data[p++];
                 if (c == b) {
                     string[slen] = '\0';
-                    LOG(("EOS [%d:%s]\n", slen, string));
+                    LOG_DEBUG("EOS [%d:%s]", slen, string);
                     break;
                 }
                 if (c == '\\') {
@@ -84,7 +77,7 @@ int validate_string(const unsigned char* data, int len) {
                     continue;
                 }
                 --p;
-                LOG(("EON [%d]\n", number));
+                LOG_DEBUG("EON [%d]", number);
                 break;
             }
             continue;
@@ -96,40 +89,40 @@ int validate_string(const unsigned char* data, int len) {
 
         switch (c) {
             case '[':
-                LOG(("BOA\n"));
+                LOG_DEBUG("BOA");
                 if (!STACK_PUSH(sa, sp, STATE_ARRAY_ELEM)) {
-                    LOG(("OVERFLOW\n"));
+                    LOG_WARNING("OVERFLOW");
                     valid = 0;
                 }
                 break;
             case ']':
-                LOG(("EOA\n"));
+                LOG_DEBUG("EOA");
                 if (!STACK_POP(sa, sp)) {
-                    LOG(("UNDERFLOW\n"));
+                    LOG_WARNING("UNDERFLOW");
                     valid = 0;
                 }
                 break;
             case '{':
-                LOG(("BOH\n"));
+                LOG_DEBUG("BOH");
                 if (!STACK_PUSH(sa, sp, STATE_HASH_KEY)) {
-                    LOG(("OVERFLOW\n"));
+                    LOG_WARNING("OVERFLOW");
                     valid = 0;
                 }
                 break;
             case '}':
-                LOG(("EOH\n"));
+                LOG_DEBUG("EOH");
                 if (!STACK_POP(sa, sp)) {
-                    LOG(("UNDERFLOW\n"));
+                    LOG_WARNING("UNDERFLOW");
                     valid = 0;
                 }
                 break;
             case ',':
                 switch (STACK_TOP(sa, sp)) {
                     case STATE_ARRAY_ELEM:
-                        LOG(("AE\n"));
+                        LOG_DEBUG("AE");
                         break;
                     case STATE_HASH_VALUE:
-                        LOG(("HK\n"));
+                        LOG_DEBUG("HK");
                         STACK_SET(sa, sp, STATE_HASH_KEY);
                         break;
                     default:
@@ -141,7 +134,7 @@ int validate_string(const unsigned char* data, int len) {
             case ':':
                 switch (STACK_TOP(sa, sp)) {
                     case STATE_HASH_KEY:
-                        LOG(("HV\n"));
+                        LOG_DEBUG("HV");
                         STACK_SET(sa, sp, STATE_HASH_VALUE);
                         break;
                     default:
@@ -151,7 +144,7 @@ int validate_string(const unsigned char* data, int len) {
                 }
                 break;
             default:
-                LOG(("HUH?\n"));
+                LOG_DEBUG("HUH?");
                 break;
         }
     }
@@ -167,44 +160,44 @@ int validate_file(const char* name) {
     do {
         fd = open(name, O_RDONLY);
         if (fd < 0) {
-            fprintf(stderr, "Cannot open [%s]\n", name);
+            LOG_ERROR("Cannot open [%s]", name);
             break;
         }
-        LOG(("Opened file [%s] as descriptor %d\n", name, fd));
+        LOG_INFO("Opened file [%s] as descriptor %d", name, fd);
 
         struct stat st;
         int status = fstat(fd, &st);
         if (status < 0) {
-            fprintf(stderr, "Cannot stat [%s]\n", name);
+            LOG_ERROR("Cannot stat [%s]", name);
             break;
         }
         size = st.st_size;
 
         data = (unsigned char*) mmap (0, size, PROT_READ, MAP_PRIVATE, fd, 0);
         if (data == MAP_FAILED) {
-            fprintf(stderr, "Cannot mmap [%s]\n", name);
+            LOG_ERROR("Cannot mmap [%s]", name);
             data = 0;
             break;
         }
 
-        LOG(("Mapped file [%s] at %p\n", name, data));
+        LOG_INFO("Mapped file [%s] at %p", name, data);
         valid = validate_string(data, size);
     } while (0);
 
     if (data) {
         int rc = munmap(data, size);
         if (rc < 0) {
-            fprintf(stderr, "Cannot unmap [%s] from %p\n", name, data);
+            LOG_ERROR("Cannot unmap [%s] from %p", name, data);
         }
-        LOG(("Unmapped file [%s] from %p\n", name, data));
+        LOG_INFO("Unmapped file [%s] from %p", name, data);
         data = 0;
     }
     if (fd >= 0) {
         int rc = close(fd);
         if (rc < 0) {
-            fprintf(stderr, "Cannot close [%s]\n", name);
+            LOG_ERROR("Cannot close [%s]", name);
         }
-        LOG(("Closed file [%s] as descriptor %d\n", name, fd));
+        LOG_INFO("Closed file [%s] as descriptor %d", name, fd);
         fd = -1;
     }
 
