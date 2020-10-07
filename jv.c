@@ -27,7 +27,7 @@
 
 enum State {
     STATE_SCALAR,
-    STATE_ARRAY_ELEM,
+    STATE_ARRAY_ELEMENT,
     STATE_HASH_KEY,
     STATE_HASH_VALUE,
 };
@@ -90,7 +90,7 @@ int validate_slice(Slice s) {
         switch (c) {
             case '[':
                 LOG_DEBUG("BOA");
-                if (!STACK_PUSH(sa, sp, STATE_ARRAY_ELEM)) {
+                if (!STACK_PUSH(sa, sp, STATE_ARRAY_ELEMENT)) {
                     LOG_WARNING("OVERFLOW");
                     valid = 0;
                 }
@@ -118,7 +118,7 @@ int validate_slice(Slice s) {
                 break;
             case ',':
                 switch (STACK_TOP(sa, sp)) {
-                    case STATE_ARRAY_ELEM:
+                    case STATE_ARRAY_ELEMENT:
                         LOG_DEBUG("AE");
                         break;
                     case STATE_HASH_VALUE:
