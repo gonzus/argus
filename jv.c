@@ -181,7 +181,7 @@ int validate_file(const char* name) {
             break;
         }
 
-        LOG_INFO("Mapped file [%s] at %p", name, data);
+        LOG_INFO("Mapped file [%s] with %u bytes at %p", name, size, data);
         valid = validate_slice(slice_wrap_ptr_len(data, size));
     } while (0);
 
