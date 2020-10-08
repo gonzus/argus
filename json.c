@@ -4,11 +4,36 @@
 #include <ctype.h>
 #include "json.h"
 
+/*
+ * STATES:
+ * ------
+ * start
+ * array_elem
+ * array_comma
+ * hash_key
+ * hash_colon
+ * hash_value
+ * hash_comma
+ *
+ * STACK:
+ * -----
+ * array
+ * hash
+ */
+enum Memory {
+    MEMORY_ARRAY,
+    MEMORY_HASH,
+};
+
 enum State {
-    STATE_SCALAR,
-    STATE_ARRAY_ELEMENT,
+    STATE_START,
+    STATE_ARRAY_ELEM,
+    STATE_ARRAY_COMMA,
     STATE_HASH_KEY,
+    STATE_HASH_COLON,
     STATE_HASH_VALUE,
+    STATE_HASH_COMMA,
+    STATE_END,
 };
 
 JSON* json_create(void) {
@@ -36,9 +61,13 @@ int json_validate(JSON* json, const char* ptr, int len) {
     int valid = 1;
     int popped = 0;
     int number = 0;
-    for (int p = 0; valid && p < len; ) {
+    int state = STATE_START;
+    for (int p = 0; valid && state != STATE_END && p < len; ) {
         unsigned char c = ptr[p++];
+
         if (c == '#') {
+            // comment
+            // skip to EOL
             while (p < len) {
                 c = ptr[p++];
                 if (c == '\n') {
@@ -47,13 +76,16 @@ int json_validate(JSON* json, const char* ptr, int len) {
             }
             continue;
         }
+
         if (c == '\'' || c == '\"') {
+            // single or double quoted string
+            // read until closing quote
             unsigned char b = c;
             buffer_clear(json->string);
             while (p < len) {
                 c = ptr[p++];
                 if (c == b) {
-                    LOG_DEBUG("EOS [%d:%.*s]", json->string->pos, json->string->pos, json->string->ptr);
+                    LOG_INFO("EOS [%d:%.*s]", json->string->len, json->string->len, json->string->ptr);
                     break;
                 }
                 if (c == '\\') {
@@ -61,11 +93,30 @@ int json_validate(JSON* json, const char* ptr, int len) {
                 }
                 buffer_append_byte(json->string, c);
             }
+            switch (state) {
+                case STATE_START:
+                    state = STATE_END;
+                    break;
+                case STATE_ARRAY_ELEM:
+                    state = STATE_ARRAY_COMMA;
+                    break;
+                case STATE_HASH_KEY:
+                    state = STATE_HASH_COLON;
+                    break;
+                case STATE_HASH_VALUE:
+                    state = STATE_HASH_COMMA;
+                    break;
+                default:
+                    LOG_INFO("INVALID STRING");
+                    valid = 0;
+                    break;
+            }
             continue;
         }
 
-        // TODO: handle signs
         if (isdigit(c)) {
+            // number
+            // TODO: handle signs
             number = c - '0';
             while (p < len) {
                 c = ptr[p++];
@@ -74,90 +125,154 @@ int json_validate(JSON* json, const char* ptr, int len) {
                     continue;
                 }
                 --p;
-                LOG_DEBUG("EON [%d]", number);
+                LOG_INFO("EON [%d]", number);
                 break;
+            }
+            switch (state) {
+                case STATE_START:
+                    state = STATE_END;
+                    break;
+                case STATE_ARRAY_ELEM:
+                    state = STATE_ARRAY_COMMA;
+                    break;
+                case STATE_HASH_KEY:
+                    state = STATE_HASH_COLON;
+                    break;
+                case STATE_HASH_VALUE:
+                    state = STATE_HASH_COMMA;
+                    break;
+                default:
+                    LOG_INFO("INVALID NUMBER");
+                    valid = 0;
+                    break;
             }
             continue;
         }
 
         if (isspace(c)) {
+            // whitespace
+            // skip
             continue;
         }
 
         switch (c) {
             case '[':
-                LOG_DEBUG("BOA");
-                if (stack_push(json->stack, STATE_ARRAY_ELEMENT)) {
-                    LOG_WARNING("OVERFLOW");
-                    valid = 0;
-                }
-                break;
-            case ']':
-                LOG_DEBUG("EOA");
-                if (stack_pop(json->stack, &popped)) {
-                    LOG_WARNING("UNDERFLOW");
-                    valid = 0;
-                }
-                break;
-            case '{':
-                LOG_DEBUG("BOH");
-                if (stack_push(json->stack, STATE_HASH_KEY)) {
-                    LOG_WARNING("OVERFLOW");
-                    valid = 0;
-                }
-                break;
-            case '}':
-                LOG_DEBUG("EOH");
-                if (stack_pop(json->stack, &popped)) {
-                    LOG_WARNING("UNDERFLOW");
-                    valid = 0;
-                }
-                break;
-            case ',':
-                if (stack_top(json->stack, &popped)) {
-                    LOG_WARNING("UNDERFLOW");
-                    valid = 0;
-                    break;
-                }
-                switch (popped) {
-                    case STATE_ARRAY_ELEMENT:
-                        LOG_DEBUG("AE");
-                        break;
+                LOG_INFO("BOA");
+                switch (state) {
+                    case STATE_START:
+                    case STATE_ARRAY_ELEM:
                     case STATE_HASH_VALUE:
-                        LOG_DEBUG("HK");
-                        if (stack_set(json->stack, STATE_HASH_KEY)) {
-                            LOG_WARNING("UNDERFLOW");
-                            valid = 0;
-                        }
+                        state = STATE_ARRAY_ELEM;
                         break;
                     default:
-                        /* ERROR */
+                        LOG_INFO("INVALID '['");
                         valid = 0;
                         break;
                 }
+                if (stack_push(json->stack, MEMORY_ARRAY)) {
+                    LOG_INFO("OVERFLOW");
+                    valid = 0;
+                }
                 break;
-            case ':':
-                if (stack_top(json->stack, &popped)) {
-                    LOG_WARNING("UNDERFLOW");
+
+            case ']':
+                LOG_INFO("EOA");
+                switch (state) {
+                    case STATE_ARRAY_ELEM:
+                    case STATE_ARRAY_COMMA:
+                        state = STATE_ARRAY_ELEM;
+                        break;
+                    default:
+                        LOG_INFO("INVALID ']'");
+                        valid = 0;
+                        break;
+                }
+                if (stack_pop(json->stack, &popped)) {
+                    LOG_INFO("UNDERFLOW");
                     valid = 0;
                     break;
                 }
-                switch (popped) {
-                    case STATE_HASH_KEY:
-                        LOG_DEBUG("HV");
-                        if (stack_set(json->stack, STATE_HASH_VALUE)) {
-                            LOG_WARNING("UNDERFLOW");
-                            valid = 0;
-                        }
+                if (popped != MEMORY_ARRAY) {
+                    LOG_INFO("INVALID ARRAY");
+                    valid = 0;
+                    break;
+                }
+                break;
+
+            case '{':
+                LOG_INFO("BOH");
+                switch (state) {
+                    case STATE_START:
+                    case STATE_ARRAY_ELEM:
+                    case STATE_HASH_VALUE:
+                        state = STATE_HASH_KEY;
                         break;
                     default:
-                        /* ERROR */
+                        LOG_INFO("INVALID '{'");
+                        valid = 0;
+                        break;
+                }
+                if (stack_push(json->stack, MEMORY_HASH)) {
+                    LOG_INFO("OVERFLOW");
+                    valid = 0;
+                }
+                break;
+
+            case '}':
+                LOG_INFO("EOH");
+                switch (state) {
+                    case STATE_HASH_KEY:
+                    case STATE_HASH_COMMA:
+                        state = STATE_HASH_KEY;
+                        break;
+                    default:
+                        LOG_INFO("INVALID '}'");
+                        valid = 0;
+                        break;
+                }
+                if (stack_pop(json->stack, &popped)) {
+                    LOG_INFO("UNDERFLOW");
+                    valid = 0;
+                    break;
+                }
+                if (popped != MEMORY_HASH) {
+                    LOG_INFO("INVALID HASH");
+                    valid = 0;
+                    break;
+                }
+                break;
+
+            case ',':
+                LOG_INFO("COMMA");
+                switch (state) {
+                    case STATE_ARRAY_COMMA:
+                        state = STATE_ARRAY_ELEM;
+                        break;
+                    case STATE_HASH_COMMA:
+                        state = STATE_HASH_KEY;
+                        break;
+                    default:
+                        LOG_INFO("INVALID ','");
                         valid = 0;
                         break;
                 }
                 break;
+
+            case ':':
+                LOG_INFO("COLON");
+                switch (state) {
+                    case STATE_HASH_COLON:
+                        state = STATE_HASH_VALUE;
+                        break;
+                    default:
+                        LOG_INFO("INVALID ':'");
+                        valid = 0;
+                        break;
+                }
+                break;
+
             default:
-                LOG_DEBUG("HUH?");
+                LOG_INFO("HUH?");
                 break;
         }
     }
