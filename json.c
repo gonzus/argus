@@ -48,11 +48,18 @@ void json_clear(JSON* json) {
 int json_validate_buffer(JSON* json, const char* ptr, int len) {
     int valid = 1;
     int popped = 0;
-    int number = 0;
     int state = STATE_START;
     int pos = 0;
     json_clear(json);
-    for (pos = 0; valid && state != STATE_END && pos < len; ) {
+    while (pos < len) {
+        if (!valid) {
+            break;
+        }
+#if 0
+        if (state == STATE_END) {
+            break;
+        }
+#endif
         unsigned char c = ptr[pos++];
 
         if (c == '#') {
@@ -111,20 +118,49 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
             continue;
         }
 
-        if (isdigit(c)) {
+        if (c == '-' || c == '+' || c == '.' || isdigit(c)) {
             // number
-            // TODO: handle signs
-            number = c - '0';
+            int sign = 1;
+            int cnt[2] = {0,0};
+            int num[2] = {0,0};
+            int dot = 0;
+            switch (c) {
+                case '-':
+                    sign = -1;
+                    break;
+                case '+':
+                    sign = +1;
+                    break;
+                case '.':
+                    ++dot;
+                    break;
+                default:
+                    num[dot] = num[dot] * 10 + c - '0';
+                    ++cnt[dot];
+                    break;
+            }
             while (pos < len) {
                 c = ptr[pos++];
-                if (isdigit(c)) {
-                    number = number * 10 + c - '0';
+                if (c == '.') {
+                    if (dot > 0) {
+                        break;
+                    }
+                    ++dot;
                     continue;
                 }
-                --pos;
-                LOG_INFO("EON [%d]", number);
+                if (!isdigit(c)) {
+                    --pos;
+                    break;
+                }
+                num[dot] = num[dot] * 10 + c - '0';
+                ++cnt[dot];
+            }
+            if (!cnt[0] && !cnt[1]) {
+                LOG_INFO("INVALID NUMBER");
+                valid = 0;
                 break;
             }
+            LOG_INFO("EON [%d:%d:%d]", sign, num[0], num[1]);
             switch (state) {
                 case STATE_START:
                     state = STATE_END;
@@ -146,6 +182,91 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
             continue;
         }
 
+        if (c == 't') {
+            if ((len - pos) >= 3 &&
+                ptr[pos+0] == 'r' &&
+                ptr[pos+1] == 'u' &&
+                ptr[pos+2] == 'e') {
+                LOG_INFO("true");
+                switch (state) {
+                    case STATE_START:
+                        state = STATE_END;
+                        break;
+                    case STATE_ARRAY_ELEM:
+                        state = STATE_ARRAY_COMMA;
+                        break;
+                    case STATE_HASH_KEY:
+                        state = STATE_HASH_COLON;
+                        break;
+                    case STATE_HASH_VALUE:
+                        state = STATE_HASH_COMMA;
+                        break;
+                    default:
+                        LOG_INFO("INVALID true");
+                        valid = 0;
+                        break;
+                }
+                continue;
+            }
+        }
+
+        if (c == 'f') {
+            if ((len - pos) >= 4 &&
+                ptr[pos+0] == 'a' &&
+                ptr[pos+1] == 'l' &&
+                ptr[pos+2] == 's' &&
+                ptr[pos+3] == 'e') {
+                LOG_INFO("false");
+                switch (state) {
+                    case STATE_START:
+                        state = STATE_END;
+                        break;
+                    case STATE_ARRAY_ELEM:
+                        state = STATE_ARRAY_COMMA;
+                        break;
+                    case STATE_HASH_KEY:
+                        state = STATE_HASH_COLON;
+                        break;
+                    case STATE_HASH_VALUE:
+                        state = STATE_HASH_COMMA;
+                        break;
+                    default:
+                        LOG_INFO("INVALID false");
+                        valid = 0;
+                        break;
+                }
+                continue;
+            }
+        }
+
+        if (c == 'n') {
+            if ((len - pos) >= 3 &&
+                ptr[pos+0] == 'u' &&
+                ptr[pos+1] == 'l' &&
+                ptr[pos+2] == 'l') {
+                LOG_INFO("null");
+                switch (state) {
+                    case STATE_START:
+                        state = STATE_END;
+                        break;
+                    case STATE_ARRAY_ELEM:
+                        state = STATE_ARRAY_COMMA;
+                        break;
+                    case STATE_HASH_KEY:
+                        state = STATE_HASH_COLON;
+                        break;
+                    case STATE_HASH_VALUE:
+                        state = STATE_HASH_COMMA;
+                        break;
+                    default:
+                        LOG_INFO("INVALID null");
+                        valid = 0;
+                        break;
+                }
+                continue;
+            }
+        }
+
         if (isspace(c)) {
             // whitespace
             // skip
@@ -154,7 +275,7 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
 
         switch (c) {
             case '[':
-                LOG_INFO("BOA");
+                LOG_INFO("BOA %d", stack_size(json->stack) + 1);
                 switch (state) {
                     case STATE_START:
                     case STATE_ARRAY_ELEM:
@@ -173,14 +294,14 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
                 break;
 
             case ']':
-                LOG_INFO("EOA");
+                LOG_INFO("EOA %d", stack_size(json->stack));
                 switch (state) {
                     case STATE_ARRAY_ELEM:
                     case STATE_ARRAY_COMMA:
                         state = STATE_ARRAY_ELEM;
                         break;
                     default:
-                        LOG_INFO("INVALID ']'");
+                        LOG_INFO("INVALID ']', state %d", state);
                         valid = 0;
                         break;
                 }
@@ -194,14 +315,22 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
                     valid = 0;
                     break;
                 }
-                if (stack_empty(json->stack)) {
+                if (stack_top(json->stack, &popped)) {
                     state = STATE_END;
                     break;
+                }
+                switch (popped) {
+                    case MEMORY_ARRAY:
+                        state = STATE_ARRAY_COMMA;
+                        break;
+                    case MEMORY_HASH:
+                        state = STATE_HASH_COMMA;
+                        break;
                 }
                 break;
 
             case '{':
-                LOG_INFO("BOH");
+                LOG_INFO("BOH %d", stack_size(json->stack) + 1);
                 switch (state) {
                     case STATE_START:
                     case STATE_ARRAY_ELEM:
@@ -220,14 +349,14 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
                 break;
 
             case '}':
-                LOG_INFO("EOH");
+                LOG_INFO("EOH %d", stack_size(json->stack));
                 switch (state) {
                     case STATE_HASH_KEY:
                     case STATE_HASH_COMMA:
                         state = STATE_HASH_KEY;
                         break;
                     default:
-                        LOG_INFO("INVALID '}'");
+                        LOG_INFO("INVALID '}', state %d", state);
                         valid = 0;
                         break;
                 }
@@ -241,9 +370,17 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
                     valid = 0;
                     break;
                 }
-                if (stack_empty(json->stack)) {
+                if (stack_top(json->stack, &popped)) {
                     state = STATE_END;
                     break;
+                }
+                switch (popped) {
+                    case MEMORY_ARRAY:
+                        state = STATE_ARRAY_COMMA;
+                        break;
+                    case MEMORY_HASH:
+                        state = STATE_HASH_COMMA;
+                        break;
                 }
                 break;
 

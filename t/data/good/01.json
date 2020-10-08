@@ -1,0 +1,6 @@
+[ "a",
+    "b", "xxx", { "p":1, "q":2, "r":"gonzo rules", "s":[1,2,3,
+        {"bilbo":"old\' hobbit", "legolas":"old elf",
+         "gandalf": "old\" wizard", "frodo baggins": 'hobbit' }
+    ], "t": 5}, "m", "n"
+]

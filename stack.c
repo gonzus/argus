@@ -1,6 +1,5 @@
 #include <stdlib.h>
 #include <string.h>
-#include <log.h>
 #include "stack.h"
 
 // #define STACK_DEFAULT_CAPACITY 1024
@@ -39,7 +38,7 @@ int stack_empty(Stack* s) {
 
 int stack_top(Stack* s, int* v) {
     if (s->pos == 0) {
-        LOG_WARNING("stack %p is empty, cannot get top", s);
+        *v = 0;
         return STACK_EMPTY;
     }
     *v = s->dat[s->pos - 1];
@@ -48,7 +47,7 @@ int stack_top(Stack* s, int* v) {
 
 int stack_pop(Stack* s, int* v) {
     if (s->pos == 0) {
-        LOG_WARNING("stack %p is empty, cannot pop", s);
+        *v = 0;
         return STACK_EMPTY;
     }
     *v = s->dat[--s->pos];
@@ -59,7 +58,6 @@ int stack_push(Stack* s, int v) {
     if (s->pos >= s->cap) {
         int cap = s->cap ? 2*s->cap : STACK_DEFAULT_CAPACITY;
         int* dat = realloc(s->dat, cap * sizeof(int));
-        LOG_DEBUG("STACK %p %d -> %p  %d", s->dat, s->cap, dat, cap);
         s->dat = dat;
         s->cap = cap;
     }
@@ -69,7 +67,6 @@ int stack_push(Stack* s, int v) {
 
 int stack_set(Stack* s, int v) {
     if (s->pos == 0) {
-        LOG_WARNING("stack %p is empty, cannot set", s);
         return STACK_EMPTY;
     }
     s->dat[s->pos -1] = v;
