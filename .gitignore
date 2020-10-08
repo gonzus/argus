@@ -1,4 +1,6 @@
 *.swp
 *.o
+*.a
 jv
 jv.dSYM/*
+t/simple

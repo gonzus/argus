@@ -62,14 +62,16 @@ int json_validate(JSON* json, const char* ptr, int len) {
     int popped = 0;
     int number = 0;
     int state = STATE_START;
-    for (int p = 0; valid && state != STATE_END && p < len; ) {
-        unsigned char c = ptr[p++];
+    int pos = 0;
+    json_clear(json);
+    for (pos = 0; valid && state != STATE_END && pos < len; ) {
+        unsigned char c = ptr[pos++];
 
         if (c == '#') {
             // comment
             // skip to EOL
-            while (p < len) {
-                c = ptr[p++];
+            while (pos < len) {
+                c = ptr[pos++];
                 if (c == '\n') {
                     break;
                 }
@@ -82,16 +84,23 @@ int json_validate(JSON* json, const char* ptr, int len) {
             // read until closing quote
             unsigned char b = c;
             buffer_clear(json->string);
-            while (p < len) {
-                c = ptr[p++];
+            int ok = 0;
+            while (pos < len) {
+                c = ptr[pos++];
                 if (c == b) {
                     LOG_INFO("EOS [%d:%.*s]", json->string->len, json->string->len, json->string->ptr);
+                    ok = 1;
                     break;
                 }
                 if (c == '\\') {
-                    c = ptr[p++];
+                    c = ptr[pos++];
                 }
                 buffer_append_byte(json->string, c);
+            }
+            if (!ok) {
+                LOG_INFO("INVALID STRING");
+                valid = 0;
+                break;
             }
             switch (state) {
                 case STATE_START:
@@ -118,13 +127,13 @@ int json_validate(JSON* json, const char* ptr, int len) {
             // number
             // TODO: handle signs
             number = c - '0';
-            while (p < len) {
-                c = ptr[p++];
+            while (pos < len) {
+                c = ptr[pos++];
                 if (isdigit(c)) {
                     number = number * 10 + c - '0';
                     continue;
                 }
-                --p;
+                --pos;
                 LOG_INFO("EON [%d]", number);
                 break;
             }
@@ -197,6 +206,10 @@ int json_validate(JSON* json, const char* ptr, int len) {
                     valid = 0;
                     break;
                 }
+                if (stack_empty(json->stack)) {
+                    state = STATE_END;
+                    break;
+                }
                 break;
 
             case '{':
@@ -240,6 +253,10 @@ int json_validate(JSON* json, const char* ptr, int len) {
                     valid = 0;
                     break;
                 }
+                if (stack_empty(json->stack)) {
+                    state = STATE_END;
+                    break;
+                }
                 break;
 
             case ',':
@@ -276,5 +293,9 @@ int json_validate(JSON* json, const char* ptr, int len) {
                 break;
         }
     }
-    return valid && stack_empty(json->stack);
+
+    return (valid &&
+            pos == len &&
+            (state == STATE_END || state == STATE_START) &&
+            stack_empty(json->stack));
 }

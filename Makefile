@@ -1,36 +1,52 @@
-first: all
+NAME = json
+
+# see more log messages
+CFLAGS += -DLOG_LEVEL=1
 
 PIZZA = pizza
 PIZZA_DIR = ../../$(PIZZA)
 PIZZA_LIB = lib$(PIZZA).a
 
+CFLAGS += -std=c99
 CFLAGS += -g
 # CFLAGS += -O
+CFLAGS += -I.
 CFLAGS += -I$(PIZZA_DIR)
-# CFLAGS += -DLOG_LEVEL=0
+CFLAGS += -Wall -Wextra -Wshadow -Wpedantic
+CFLAGS += -D_DEFAULT_SOURCE -D_SVID_SOURCE -D_XOPEN_SOURCE -D_GNU_SOURCE
 
-# LDFLAGS += -L$(PIZZA_DIR) -l$(PIZZA)
-# LDFLAGS += -lprofiler
+LIBRARY = lib$(NAME).a
 
-LIB_SRC = \
+all: $(LIBRARY)
+
+C_SRC_LIB = \
 	stack.c \
 	json.c \
 
-MAIN_SRC = jv.c
+C_OBJ_LIB = $(C_SRC_LIB:.c=.o)
 
-LIB_OBJ = $(LIB_SRC:.c=.o)
-MAIN_OBJ = $(MAIN_SRC:.c=.o)
-MAIN_EXE = $(MAIN_SRC:.c=)
+$(LIBRARY): $(C_OBJ_LIB)
+	ar -crs $@ $^
+
+C_SRC_TEST = $(wildcard t/*.c)
+C_OBJ_TEST = $(patsubst %.c, %.o, $(C_SRC_TEST))
+C_EXE_TEST = $(patsubst %.c, %, $(C_SRC_TEST))
 
 %.o: %.c
 	cc $(CFLAGS) -c -o $@ $^
 
-$(MAIN_EXE): $(MAIN_OBJ) $(LIB_OBJ) $(PIZZA_DIR)/$(PIZZA_LIB)
-	cc $(LDFLAGS) -o $@ $^
+$(C_EXE_TEST): %: %.o $(LIBRARY)
+	cc $(CFLAGS) $(LDFLAGS) -o $@ $^ $(PIZZA_DIR)/$(PIZZA_LIB) -ltap -lpthread
 
-all: $(MAIN_EXE)
+tests: $(C_EXE_TEST)
+
+test: tests
+	@for t in $(C_EXE_TEST); do ./$$t; done
+
+valgrind: tests
+	@for t in $(C_EXE_TEST); do valgrind -q ./$$t; done
 
 clean:
 	rm -f *.o
-	rm -f jv
-	rm -fr jv.dSYM/
+	rm -f $(LIBRARY)
+	rm -f $(C_OBJ_TEST) $(C_EXE_TEST)
