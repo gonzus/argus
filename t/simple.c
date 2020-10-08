@@ -26,7 +26,7 @@ static void test_scalar(void) {
         int expected = data[j].valid;
         int len = strlen(str);
         json_clear(json);
-        int valid = json_validate(json, str, len);
+        int valid = json_validate_buffer(json, str, len);
         cmp_ok(valid, "==", expected, "%s JSON scalar: <%.*s>",
                expected ? "valid" : "invalid", len, str);
     }
@@ -65,7 +65,7 @@ static void test_array(void) {
         int expected = data[j].valid;
         int len = strlen(str);
         json_clear(json);
-        int valid = json_validate(json, str, len);
+        int valid = json_validate_buffer(json, str, len);
         cmp_ok(valid, "==", expected, "%s JSON array: <%.*s>",
                expected ? "valid" : "invalid", len, str);
     }
@@ -103,7 +103,7 @@ static void test_hash(void) {
         const char* str = data[j].str;
         int expected = data[j].valid;
         int len = strlen(str);
-        int valid = json_validate(json, str, len);
+        int valid = json_validate_buffer(json, str, len);
         cmp_ok(valid, "==", expected, "%s JSON hash: <%.*s>",
                expected ? "valid" : "invalid", len, str);
     }

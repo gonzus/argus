@@ -1,25 +1,13 @@
+#include <ctype.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <log.h>
-#include <ctype.h>
 #include "json.h"
 
-/*
- * STATES:
- * ------
- * start
- * array_elem
- * array_comma
- * hash_key
- * hash_colon
- * hash_value
- * hash_comma
- *
- * STACK:
- * -----
- * array
- * hash
- */
 enum Memory {
     MEMORY_ARRAY,
     MEMORY_HASH,
@@ -57,7 +45,7 @@ void json_clear(JSON* json) {
     stack_clear(json->stack);
 }
 
-int json_validate(JSON* json, const char* ptr, int len) {
+int json_validate_buffer(JSON* json, const char* ptr, int len) {
     int valid = 1;
     int popped = 0;
     int number = 0;
@@ -298,4 +286,57 @@ int json_validate(JSON* json, const char* ptr, int len) {
             pos == len &&
             (state == STATE_END || state == STATE_START) &&
             stack_empty(json->stack));
+}
+
+int json_validate_file(JSON* json, const char* name) {
+    int valid = 0;
+    int fd = -1;
+    char* data = 0;
+    int size = 0;
+
+    do {
+        fd = open(name, O_RDONLY);
+        if (fd < 0) {
+            LOG_ERROR("Cannot open [%s]", name);
+            break;
+        }
+        LOG_DEBUG("Opened file [%s] as descriptor %d", name, fd);
+
+        struct stat st;
+        int status = fstat(fd, &st);
+        if (status < 0) {
+            LOG_ERROR("Cannot stat [%s]", name);
+            break;
+        }
+        size = st.st_size;
+
+        data = mmap (0, size, PROT_READ, MAP_PRIVATE, fd, 0);
+        if (data == MAP_FAILED) {
+            LOG_ERROR("Cannot mmap [%s]", name);
+            data = 0;
+            break;
+        }
+
+        LOG_INFO("Mapped file [%s] with %u bytes at %p", name, size, data);
+        valid = json_validate_buffer(json, data, size);
+    } while (0);
+
+    if (data) {
+        int rc = munmap(data, size);
+        if (rc < 0) {
+            LOG_ERROR("Cannot unmap [%s] from %p", name, data);
+        }
+        LOG_DEBUG("Unmapped file [%s] from %p", name, data);
+        data = 0;
+    }
+    if (fd >= 0) {
+        int rc = close(fd);
+        if (rc < 0) {
+            LOG_ERROR("Cannot close [%s]", name);
+        }
+        LOG_DEBUG("Closed file [%s] as descriptor %d", name, fd);
+        fd = -1;
+    }
+
+    return valid;
 }
