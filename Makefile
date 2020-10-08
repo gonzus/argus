@@ -1,10 +1,10 @@
-NAME = json
+NAME = argus
 
 # see more log messages
 CFLAGS += -DLOG_LEVEL=1
 
 PIZZA = pizza
-PIZZA_DIR = ../../$(PIZZA)
+PIZZA_DIR = ../$(PIZZA)
 PIZZA_LIB = lib$(PIZZA).a
 
 CFLAGS += -std=c99
@@ -21,7 +21,7 @@ all: $(LIBRARY)
 
 C_SRC_LIB = \
 	stack.c \
-	json.c \
+	argus.c \
 
 C_OBJ_LIB = $(C_SRC_LIB:.c=.o)
 

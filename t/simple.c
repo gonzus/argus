@@ -1,6 +1,6 @@
 #include <string.h>
 #include <tap.h>
-#include "json.h"
+#include "argus.h"
 
 #define ALEN(a) (int) (sizeof(a) / sizeof(a[0]))
 
@@ -38,17 +38,17 @@ static void test_scalar(void) {
         { "'"           , 0 },
         { "\""          , 0 },
     };
-    JSON* json = json_create();
+    Argus* argus = argus_create();
     for (int j = 0; j < ALEN(data); ++j) {
         const char* str = data[j].str;
         int expected = data[j].valid;
         int len = strlen(str);
-        json_clear(json);
-        int valid = json_validate_buffer(json, str, len);
+        argus_clear(argus);
+        int valid = argus_validate_buffer(argus, str, len);
         cmp_ok(valid, "==", expected, "%s JSON scalar: <%.*s>",
                expected ? "valid" : "invalid", len, str);
     }
-    json_destroy(json);
+    argus_destroy(argus);
 }
 
 static void test_array(void) {
@@ -79,17 +79,17 @@ static void test_array(void) {
         { "[],[]"       , 0 },
         { "[],{}"       , 0 },
     };
-    JSON* json = json_create();
+    Argus* argus = argus_create();
     for (int j = 0; j < ALEN(data); ++j) {
         const char* str = data[j].str;
         int expected = data[j].valid;
         int len = strlen(str);
-        json_clear(json);
-        int valid = json_validate_buffer(json, str, len);
+        argus_clear(argus);
+        int valid = argus_validate_buffer(argus, str, len);
         cmp_ok(valid, "==", expected, "%s JSON array: <%.*s>",
                expected ? "valid" : "invalid", len, str);
     }
-    json_destroy(json);
+    argus_destroy(argus);
 }
 
 static void test_hash(void) {
@@ -119,16 +119,16 @@ static void test_hash(void) {
         { "{},[]"       , 0 },
         { "{},{}"       , 0 },
     };
-    JSON* json = json_create();
+    Argus* argus = argus_create();
     for (int j = 0; j < ALEN(data); ++j) {
         const char* str = data[j].str;
         int expected = data[j].valid;
         int len = strlen(str);
-        int valid = json_validate_buffer(json, str, len);
+        int valid = argus_validate_buffer(argus, str, len);
         cmp_ok(valid, "==", expected, "%s JSON hash: <%.*s>",
                expected ? "valid" : "invalid", len, str);
     }
-    json_destroy(json);
+    argus_destroy(argus);
 }
 
 int main (int argc, char* argv[]) {

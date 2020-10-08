@@ -4,19 +4,19 @@
 #include <dirent.h>
 #include <tap.h>
 #include <log.h>
-#include "json.h"
+#include "argus.h"
 
 #define ALEN(a) (int) (sizeof(a) / sizeof(a[0]))
 
 static void test_files(const char* dir, int expected) {
     char dir_name[1024];
     sprintf(dir_name, "t/data/%s", dir);
-    JSON* json = 0;
+    Argus* argus = 0;
     DIR* dirp = 0;
 
     do {
-        json = json_create();
-        if (!json) {
+        argus = argus_create();
+        if (!argus) {
             LOG_WARNING("Could not create JSON parser");
             break;
         }
@@ -50,7 +50,7 @@ static void test_files(const char* dir, int expected) {
             LOG_INFO("File [%s]", entry->d_name);
             char file_name[2048];
             sprintf(file_name, "%s/%s", dir_name, entry->d_name);
-            int valid = json_validate_file(json, file_name);
+            int valid = argus_validate_file(argus, file_name);
             cmp_ok(valid, "==", expected, "%s JSON file <%s>",
                    expected ? "valid" : "invalid", file_name);
         }
@@ -64,9 +64,9 @@ static void test_files(const char* dir, int expected) {
         dirp = 0;
     }
 
-    if (json) {
-        json_destroy(json);
-        json = 0;
+    if (argus) {
+        argus_destroy(argus);
+        argus = 0;
     }
 }
 

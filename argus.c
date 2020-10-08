@@ -6,7 +6,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <log.h>
-#include "json.h"
+#include "argus.h"
 
 enum Memory {
     MEMORY_ARRAY,
@@ -24,33 +24,33 @@ enum State {
     STATE_END,
 };
 
-JSON* json_create(void) {
-    JSON* json = (JSON*) malloc(sizeof(JSON));
-    memset(json, 0, sizeof(JSON));
-    json->stack = stack_create();
-    json->string = buffer_build();
-    return json;
+Argus* argus_create(void) {
+    Argus* argus = (Argus*) malloc(sizeof(Argus));
+    memset(argus, 0, sizeof(Argus));
+    argus->stack = stack_create();
+    argus->string = buffer_build();
+    return argus;
 }
 
-void json_destroy(JSON* json) {
-    buffer_destroy(json->string);
-    json->string = 0;
-    stack_destroy(json->stack);
-    json->stack = 0;
-    free((void*) json);
-    json = 0;
+void argus_destroy(Argus* argus) {
+    buffer_destroy(argus->string);
+    argus->string = 0;
+    stack_destroy(argus->stack);
+    argus->stack = 0;
+    free((void*) argus);
+    argus = 0;
 }
 
-void json_clear(JSON* json) {
-    stack_clear(json->stack);
+void argus_clear(Argus* argus) {
+    stack_clear(argus->stack);
 }
 
-int json_validate_buffer(JSON* json, const char* ptr, int len) {
+int argus_validate_buffer(Argus* argus, const char* ptr, int len) {
     int valid = 1;
     int popped = 0;
     int state = STATE_START;
     int pos = 0;
-    json_clear(json);
+    argus_clear(argus);
     while (pos < len) {
         if (!valid) {
             break;
@@ -78,19 +78,19 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
             // single or double quoted string
             // read until closing quote
             unsigned char b = c;
-            buffer_clear(json->string);
+            buffer_clear(argus->string);
             int ok = 0;
             while (pos < len) {
                 c = ptr[pos++];
                 if (c == b) {
-                    LOG_INFO("EOS [%d:%.*s]", json->string->len, json->string->len, json->string->ptr);
+                    LOG_INFO("EOS [%d:%.*s]", argus->string->len, argus->string->len, argus->string->ptr);
                     ok = 1;
                     break;
                 }
                 if (c == '\\') {
                     c = ptr[pos++];
                 }
-                buffer_append_byte(json->string, c);
+                buffer_append_byte(argus->string, c);
             }
             if (!ok) {
                 LOG_INFO("INVALID STRING");
@@ -275,7 +275,7 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
 
         switch (c) {
             case '[':
-                LOG_INFO("BOA %d", stack_size(json->stack) + 1);
+                LOG_INFO("BOA %d", stack_size(argus->stack) + 1);
                 switch (state) {
                     case STATE_START:
                     case STATE_ARRAY_ELEM:
@@ -287,14 +287,14 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
                         valid = 0;
                         break;
                 }
-                if (stack_push(json->stack, MEMORY_ARRAY)) {
+                if (stack_push(argus->stack, MEMORY_ARRAY)) {
                     LOG_INFO("OVERFLOW");
                     valid = 0;
                 }
                 break;
 
             case ']':
-                LOG_INFO("EOA %d", stack_size(json->stack));
+                LOG_INFO("EOA %d", stack_size(argus->stack));
                 switch (state) {
                     case STATE_ARRAY_ELEM:
                     case STATE_ARRAY_COMMA:
@@ -305,7 +305,7 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
                         valid = 0;
                         break;
                 }
-                if (stack_pop(json->stack, &popped)) {
+                if (stack_pop(argus->stack, &popped)) {
                     LOG_INFO("UNDERFLOW");
                     valid = 0;
                     break;
@@ -315,7 +315,7 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
                     valid = 0;
                     break;
                 }
-                if (stack_top(json->stack, &popped)) {
+                if (stack_top(argus->stack, &popped)) {
                     state = STATE_END;
                     break;
                 }
@@ -330,7 +330,7 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
                 break;
 
             case '{':
-                LOG_INFO("BOH %d", stack_size(json->stack) + 1);
+                LOG_INFO("BOH %d", stack_size(argus->stack) + 1);
                 switch (state) {
                     case STATE_START:
                     case STATE_ARRAY_ELEM:
@@ -342,14 +342,14 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
                         valid = 0;
                         break;
                 }
-                if (stack_push(json->stack, MEMORY_HASH)) {
+                if (stack_push(argus->stack, MEMORY_HASH)) {
                     LOG_INFO("OVERFLOW");
                     valid = 0;
                 }
                 break;
 
             case '}':
-                LOG_INFO("EOH %d", stack_size(json->stack));
+                LOG_INFO("EOH %d", stack_size(argus->stack));
                 switch (state) {
                     case STATE_HASH_KEY:
                     case STATE_HASH_COMMA:
@@ -360,7 +360,7 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
                         valid = 0;
                         break;
                 }
-                if (stack_pop(json->stack, &popped)) {
+                if (stack_pop(argus->stack, &popped)) {
                     LOG_INFO("UNDERFLOW");
                     valid = 0;
                     break;
@@ -370,7 +370,7 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
                     valid = 0;
                     break;
                 }
-                if (stack_top(json->stack, &popped)) {
+                if (stack_top(argus->stack, &popped)) {
                     state = STATE_END;
                     break;
                 }
@@ -422,10 +422,10 @@ int json_validate_buffer(JSON* json, const char* ptr, int len) {
     return (valid &&
             pos == len &&
             (state == STATE_END || state == STATE_START) &&
-            stack_empty(json->stack));
+            stack_empty(argus->stack));
 }
 
-int json_validate_file(JSON* json, const char* name) {
+int argus_validate_file(Argus* argus, const char* name) {
     int valid = 0;
     int fd = -1;
     char* data = 0;
@@ -455,7 +455,7 @@ int json_validate_file(JSON* json, const char* name) {
         }
 
         LOG_INFO("Mapped file [%s] with %u bytes at %p", name, size, data);
-        valid = json_validate_buffer(json, data, size);
+        valid = argus_validate_buffer(argus, data, size);
     } while (0);
 
     if (data) {
