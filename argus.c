@@ -8,6 +8,12 @@
 #include <log.h>
 #include "argus.h"
 
+#define ADD_DIGIT(num, cnt, pos, dig) \
+    do { \
+        num[pos] = num[pos] * 10 + dig - '0'; \
+        ++cnt[pos]; \
+    } while (0)
+
 enum Memory {
     MEMORY_ARRAY,
     MEMORY_HASH,
@@ -22,7 +28,13 @@ enum State {
     STATE_HASH_VALUE,
     STATE_HASH_COMMA,
     STATE_END,
+    STATE_INVALID,
 };
+
+static int parse_string(Argus* argus, char quote, const char* ptr, int pos, int len);
+static int parse_number(Argus* argus, char c, const char* ptr, int pos, int len);
+static int parse_fixed(const char* fixed, int state, const char* ptr, int pos, int len);
+static int state_after_scalar(int state);
 
 Argus* argus_create(void) {
     Argus* argus = (Argus*) malloc(sizeof(Argus));
@@ -55,16 +67,10 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
         if (!valid) {
             break;
         }
-#if 0
-        if (state == STATE_END) {
-            break;
-        }
-#endif
         unsigned char c = ptr[pos++];
 
         if (c == '#') {
-            // comment
-            // skip to EOL
+            // comment -- skip to EOL
             while (pos < len) {
                 c = ptr[pos++];
                 if (c == '\n') {
@@ -76,203 +82,79 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
 
         if (c == '\'' || c == '\"') {
             // single or double quoted string
-            // read until closing quote
-            unsigned char b = c;
-            buffer_clear(argus->string);
-            int ok = 0;
-            while (pos < len) {
-                c = ptr[pos++];
-                if (c == b) {
-                    LOG_INFO("EOS [%d:%.*s]", argus->string->len, argus->string->len, argus->string->ptr);
-                    ok = 1;
-                    break;
-                }
-                if (c == '\\') {
-                    c = ptr[pos++];
-                }
-                buffer_append_byte(argus->string, c);
-            }
-            if (!ok) {
+            int n = parse_string(argus, c, ptr, pos, len);
+            if (!n) {
                 LOG_INFO("INVALID STRING");
                 valid = 0;
                 break;
             }
-            switch (state) {
-                case STATE_START:
-                    state = STATE_END;
-                    break;
-                case STATE_ARRAY_ELEM:
-                    state = STATE_ARRAY_COMMA;
-                    break;
-                case STATE_HASH_KEY:
-                    state = STATE_HASH_COLON;
-                    break;
-                case STATE_HASH_VALUE:
-                    state = STATE_HASH_COMMA;
-                    break;
-                default:
-                    LOG_INFO("INVALID STRING");
-                    valid = 0;
-                    break;
+            pos = n;
+            state = state_after_scalar(state);
+            if (state == STATE_INVALID) {
+                LOG_INFO("INVALID STRING");
+                valid = 0;
+                break;
             }
             continue;
         }
 
         if (c == '-' || c == '+' || c == '.' || isdigit(c)) {
             // number
-            int sign = 1;
-            int cnt[2] = {0,0};
-            int num[2] = {0,0};
-            int dot = 0;
-            switch (c) {
-                case '-':
-                    sign = -1;
-                    break;
-                case '+':
-                    sign = +1;
-                    break;
-                case '.':
-                    ++dot;
-                    break;
-                default:
-                    num[dot] = num[dot] * 10 + c - '0';
-                    ++cnt[dot];
-                    break;
-            }
-            while (pos < len) {
-                c = ptr[pos++];
-                if (c == '.') {
-                    if (dot > 0) {
-                        break;
-                    }
-                    ++dot;
-                    continue;
-                }
-                if (!isdigit(c)) {
-                    --pos;
-                    break;
-                }
-                num[dot] = num[dot] * 10 + c - '0';
-                ++cnt[dot];
-            }
-            if (!cnt[0] && !cnt[1]) {
+            int n = parse_number(argus, c, ptr, pos, len);
+            if (!n) {
                 LOG_INFO("INVALID NUMBER");
                 valid = 0;
                 break;
             }
-            LOG_INFO("EON [%d:%d:%d]", sign, num[0], num[1]);
-            switch (state) {
-                case STATE_START:
-                    state = STATE_END;
-                    break;
-                case STATE_ARRAY_ELEM:
-                    state = STATE_ARRAY_COMMA;
-                    break;
-                case STATE_HASH_KEY:
-                    state = STATE_HASH_COLON;
-                    break;
-                case STATE_HASH_VALUE:
-                    state = STATE_HASH_COMMA;
-                    break;
-                default:
-                    LOG_INFO("INVALID NUMBER");
-                    valid = 0;
-                    break;
+            pos = n;
+            state = state_after_scalar(state);
+            if (state == STATE_INVALID) {
+                LOG_INFO("INVALID NUMBER");
+                valid = 0;
+                break;
             }
             continue;
         }
 
         if (c == 't') {
-            if ((len - pos) >= 3 &&
-                ptr[pos+0] == 'r' &&
-                ptr[pos+1] == 'u' &&
-                ptr[pos+2] == 'e') {
-                LOG_INFO("true");
-                switch (state) {
-                    case STATE_START:
-                        state = STATE_END;
-                        break;
-                    case STATE_ARRAY_ELEM:
-                        state = STATE_ARRAY_COMMA;
-                        break;
-                    case STATE_HASH_KEY:
-                        state = STATE_HASH_COLON;
-                        break;
-                    case STATE_HASH_VALUE:
-                        state = STATE_HASH_COMMA;
-                        break;
-                    default:
-                        LOG_INFO("INVALID true");
-                        valid = 0;
-                        break;
-                }
-                continue;
+            state = parse_fixed("true", state, ptr, pos, len);
+            if (state == STATE_INVALID) {
+                LOG_INFO("INVALID true");
+                valid = 0;
+                break;
             }
-        }
-
-        if (c == 'f') {
-            if ((len - pos) >= 4 &&
-                ptr[pos+0] == 'a' &&
-                ptr[pos+1] == 'l' &&
-                ptr[pos+2] == 's' &&
-                ptr[pos+3] == 'e') {
-                LOG_INFO("false");
-                switch (state) {
-                    case STATE_START:
-                        state = STATE_END;
-                        break;
-                    case STATE_ARRAY_ELEM:
-                        state = STATE_ARRAY_COMMA;
-                        break;
-                    case STATE_HASH_KEY:
-                        state = STATE_HASH_COLON;
-                        break;
-                    case STATE_HASH_VALUE:
-                        state = STATE_HASH_COMMA;
-                        break;
-                    default:
-                        LOG_INFO("INVALID false");
-                        valid = 0;
-                        break;
-                }
-                continue;
-            }
-        }
-
-        if (c == 'n') {
-            if ((len - pos) >= 3 &&
-                ptr[pos+0] == 'u' &&
-                ptr[pos+1] == 'l' &&
-                ptr[pos+2] == 'l') {
-                LOG_INFO("null");
-                switch (state) {
-                    case STATE_START:
-                        state = STATE_END;
-                        break;
-                    case STATE_ARRAY_ELEM:
-                        state = STATE_ARRAY_COMMA;
-                        break;
-                    case STATE_HASH_KEY:
-                        state = STATE_HASH_COLON;
-                        break;
-                    case STATE_HASH_VALUE:
-                        state = STATE_HASH_COMMA;
-                        break;
-                    default:
-                        LOG_INFO("INVALID null");
-                        valid = 0;
-                        break;
-                }
-                continue;
-            }
-        }
-
-        if (isspace(c)) {
-            // whitespace
-            // skip
+            pos += 3;
             continue;
         }
 
+        if (c == 'f') {
+            state = parse_fixed("false", state, ptr, pos, len);
+            if (state == STATE_INVALID) {
+                LOG_INFO("INVALID false");
+                valid = 0;
+                break;
+            }
+            pos += 4;
+            continue;
+        }
+
+        if (c == 'n') {
+            state = parse_fixed("null", state, ptr, pos, len);
+            if (state == STATE_INVALID) {
+                LOG_INFO("INVALID null");
+                valid = 0;
+                break;
+            }
+            pos += 3;
+            continue;
+        }
+
+        if (isspace(c)) {
+            // whitespace -- skip
+            continue;
+        }
+
+        // here we parse arrays and hashes
         switch (c) {
             case '[':
                 LOG_INFO("BOA %d", stack_size(argus->stack) + 1);
@@ -415,6 +297,7 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
 
             default:
                 LOG_INFO("HUH?");
+                valid = 0;
                 break;
         }
     }
@@ -476,4 +359,110 @@ int argus_parse_file(Argus* argus, const char* name) {
     }
 
     return valid;
+}
+
+static int parse_string(Argus* argus, char quote, const char* ptr, int pos, int len) {
+    buffer_clear(argus->string);
+    int ok = 0;
+    // read until closing quote
+    while (pos < len) {
+        unsigned char c = ptr[pos++];
+        if (c == quote) {
+            LOG_INFO("EOS [%d:%.*s]", argus->string->len, argus->string->len, argus->string->ptr);
+            ok = 1;
+            break;
+        }
+        if (c == '\\') {
+            c = ptr[pos++];
+        }
+        buffer_append_byte(argus->string, c);
+    }
+    if (!ok) {
+        LOG_INFO("INVALID STRING");
+        return 0;
+    }
+    return pos;
+}
+
+static int parse_number(Argus* argus, char c, const char* ptr, int pos, int len) {
+    (void) argus;
+    int sign = 1;
+    int num[2] = {0,0}; // number so far, before / after decimal point
+    int cnt[2] = {0,0}; // count of digits so far, before / after decimal point
+    int dot = 0;
+    switch (c) {
+        case '-':
+            sign = -1;
+            break;
+        case '+':
+            sign = +1;
+            break;
+        case '.':
+            ++dot;
+            break;
+        default:
+            ADD_DIGIT(num, cnt, dot, c);
+            break;
+    }
+    while (pos < len) {
+        c = ptr[pos++];
+        if (c == '.') {
+            if (dot > 0) {
+                break;
+            }
+            ++dot;
+            continue;
+        }
+        if (!isdigit(c)) {
+            --pos;
+            break;
+        }
+        ADD_DIGIT(num, cnt, dot, c);
+    }
+    if (!cnt[0] && !cnt[1]) {
+        return 0;
+    }
+    LOG_INFO("EON [%d:%d:%d]", sign, num[0], num[1]);
+    return pos;
+}
+
+static int parse_fixed(const char* fixed, int state, const char* ptr, int pos, int len) {
+    do {
+        int flen = strlen(fixed) - 1;
+        if ((len - pos) < flen) {
+            state = STATE_INVALID;
+            break;
+        }
+        if (memcmp(ptr + pos, fixed + 1, flen) != 0) {
+            state = STATE_INVALID;
+            break;
+        }
+        state = state_after_scalar(state);
+    } while (0);
+
+    if (state != STATE_INVALID) {
+        LOG_INFO("%s", fixed);
+    }
+    return state;
+}
+
+static int state_after_scalar(int state) {
+    switch (state) {
+        case STATE_START:
+            state = STATE_END;
+            break;
+        case STATE_ARRAY_ELEM:
+            state = STATE_ARRAY_COMMA;
+            break;
+        case STATE_HASH_KEY:
+            state = STATE_HASH_COLON;
+            break;
+        case STATE_HASH_VALUE:
+            state = STATE_HASH_COMMA;
+            break;
+        default:
+            state = STATE_INVALID;
+            break;
+    }
+    return state;
 }
