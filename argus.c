@@ -45,7 +45,7 @@ void argus_clear(Argus* argus) {
     stack_clear(argus->stack);
 }
 
-int argus_validate_buffer(Argus* argus, const char* ptr, int len) {
+int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
     int valid = 1;
     int popped = 0;
     int state = STATE_START;
@@ -425,7 +425,7 @@ int argus_validate_buffer(Argus* argus, const char* ptr, int len) {
             stack_empty(argus->stack));
 }
 
-int argus_validate_file(Argus* argus, const char* name) {
+int argus_parse_file(Argus* argus, const char* name) {
     int valid = 0;
     int fd = -1;
     char* data = 0;
@@ -455,7 +455,7 @@ int argus_validate_file(Argus* argus, const char* name) {
         }
 
         LOG_INFO("Mapped file [%s] with %u bytes at %p", name, size, data);
-        valid = argus_validate_buffer(argus, data, size);
+        valid = argus_parse_buffer(argus, data, size);
     } while (0);
 
     if (data) {

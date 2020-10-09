@@ -13,7 +13,7 @@ Argus* argus_create(void);
 void argus_destroy(Argus* argus);
 void argus_clear(Argus* argus);
 
-int argus_validate_buffer(Argus* argus, const char* ptr, int len);
-int argus_validate_file(Argus* argus, const char* name);
+int argus_parse_buffer(Argus* argus, const char* ptr, int len);
+int argus_parse_file(Argus* argus, const char* name);
 
 #endif

@@ -50,7 +50,7 @@ static void test_files(const char* dir, int expected) {
             LOG_INFO("File [%s]", entry->d_name);
             char file_name[2048];
             sprintf(file_name, "%s/%s", dir_name, entry->d_name);
-            int valid = argus_validate_file(argus, file_name);
+            int valid = argus_parse_file(argus, file_name);
             cmp_ok(valid, "==", expected, "%s JSON file <%s>",
                    expected ? "valid" : "invalid", file_name);
         }
