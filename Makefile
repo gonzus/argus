@@ -3,15 +3,10 @@ NAME = argus
 # see more log messages
 CFLAGS += -DLOG_LEVEL=1
 
-PIZZA = pizza
-PIZZA_DIR = ../$(PIZZA)
-PIZZA_LIB = lib$(PIZZA).a
-
 CFLAGS += -std=c99
 CFLAGS += -g
 # CFLAGS += -O
 CFLAGS += -I.
-CFLAGS += -I$(PIZZA_DIR)
 CFLAGS += -Wall -Wextra -Wshadow -Wpedantic
 CFLAGS += -D_DEFAULT_SOURCE -D_SVID_SOURCE -D_XOPEN_SOURCE -D_GNU_SOURCE
 
@@ -20,6 +15,8 @@ LIBRARY = lib$(NAME).a
 all: $(LIBRARY)
 
 C_SRC_LIB = \
+	log.c \
+	buffer.c \
 	stack.c \
 	argus.c \
 
@@ -36,7 +33,7 @@ C_EXE_TEST = $(patsubst %.c, %, $(C_SRC_TEST))
 	cc $(CFLAGS) -c -o $@ $^
 
 $(C_EXE_TEST): %: %.o $(LIBRARY)
-	cc $(CFLAGS) $(LDFLAGS) -o $@ $^ $(PIZZA_DIR)/$(PIZZA_LIB) -ltap -lpthread
+	cc $(CFLAGS) $(LDFLAGS) -o $@ $^ -ltap -lpthread
 
 tests: $(C_EXE_TEST)
 
