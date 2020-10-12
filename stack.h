@@ -7,7 +7,7 @@ enum Stack_Error {
 };
 
 typedef struct Stack {
-    int* dat;
+    char* dat;
     int cap;
     int pos;
 } Stack;
@@ -20,9 +20,8 @@ void stack_clear(Stack* s);
 int stack_size(Stack* s);
 int stack_empty(Stack* s);
 
-int stack_top(Stack* s, int* v);
-int stack_pop(Stack* s, int* v);
-int stack_push(Stack* s, int v);
-int stack_set(Stack* s, int v);
+int stack_top(Stack* s, char* v);
+int stack_pop(Stack* s, char* v);
+int stack_push(Stack* s, char v);
 
 #endif

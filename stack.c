@@ -2,8 +2,9 @@
 #include <string.h>
 #include "stack.h"
 
-// #define STACK_DEFAULT_CAPACITY 1024
+// TODO: change this back to 1024; we use 2 to test the automatic stack growth
 #define STACK_DEFAULT_CAPACITY 2
+// #define STACK_DEFAULT_CAPACITY 1024
 
 Stack* stack_create(void) {
     return stack_create_capacity(0);
@@ -13,7 +14,7 @@ Stack* stack_create_capacity(int capacity) {
     Stack* s = (Stack*) malloc(sizeof(Stack));
     memset(s, 0, sizeof(Stack));
     s->cap = capacity ? capacity : STACK_DEFAULT_CAPACITY;
-    s->dat = (int*) calloc(s->cap, sizeof(int));
+    s->dat = (char*) calloc(s->cap, 1);
     return s;
 }
 
@@ -36,7 +37,7 @@ int stack_empty(Stack* s) {
     return s->pos == 0;
 }
 
-int stack_top(Stack* s, int* v) {
+int stack_top(Stack* s, char* v) {
     if (s->pos == 0) {
         *v = 0;
         return STACK_EMPTY;
@@ -45,7 +46,7 @@ int stack_top(Stack* s, int* v) {
     return STACK_OK;
 }
 
-int stack_pop(Stack* s, int* v) {
+int stack_pop(Stack* s, char* v) {
     if (s->pos == 0) {
         *v = 0;
         return STACK_EMPTY;
@@ -54,21 +55,13 @@ int stack_pop(Stack* s, int* v) {
     return STACK_OK;
 }
 
-int stack_push(Stack* s, int v) {
+int stack_push(Stack* s, char v) {
     if (s->pos >= s->cap) {
         int cap = s->cap ? 2*s->cap : STACK_DEFAULT_CAPACITY;
-        int* dat = realloc(s->dat, cap * sizeof(int));
+        char* dat = realloc(s->dat, cap);
         s->dat = dat;
         s->cap = cap;
     }
     s->dat[s->pos++] = v;
-    return STACK_OK;
-}
-
-int stack_set(Stack* s, int v) {
-    if (s->pos == 0) {
-        return STACK_EMPTY;
-    }
-    s->dat[s->pos -1] = v;
     return STACK_OK;
 }

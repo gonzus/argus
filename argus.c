@@ -14,6 +14,9 @@
         ++cnt[pos]; \
     } while (0)
 
+#define STATE_NAME(s) StateName[(int)s]
+#define SHOW_STATE(msg, s) LOG_INFO("%s: %s", msg, STATE_NAME(s))
+
 enum State {
     STATE_START,
     STATE_ARRAY_ELEM,
@@ -24,6 +27,18 @@ enum State {
     STATE_HASH_COMMA,
     STATE_END,
     STATE_INVALID,
+    STATE_LAST,
+};
+static char* StateName[STATE_LAST] = {
+    "START",
+    "ARRAY_ELEM",
+    "ARRAY_COMMA",
+    "HASH_KEY",
+    "HASH_COLON",
+    "HASH_VALUE",
+    "HASH_COMMA",
+    "END",
+    "INVALID",
 };
 
 static int parse_string(Argus* argus, char quote, const char* ptr, int pos, int len);
@@ -54,8 +69,8 @@ void argus_clear(Argus* argus) {
 
 int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
     int valid = 1;
-    int current = 0;
-    int state = STATE_START;
+    char current = 0;
+    char state = STATE_START;
     int pos = 0;
     argus_clear(argus);
     while (pos < len) {
@@ -161,7 +176,7 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
                         state = STATE_ARRAY_ELEM;
                         break;
                     default:
-                        LOG_INFO("INVALID '[' -- state %d", state);
+                        LOG_INFO("INVALID '[' -- state %s", STATE_NAME(state));
                         valid = 0;
                         break;
                 }
@@ -182,7 +197,7 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
                     state = STATE_END;
                     break;
                 }
-                LOG_INFO("current %d", current);
+                SHOW_STATE("current", current);
                 state = state_after_value(current);
                 if (state == STATE_INVALID) {
                     LOG_INFO("INVALID ARRAY/HASH ELEM");
@@ -201,7 +216,7 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
                         state = STATE_HASH_KEY;
                         break;
                     default:
-                        LOG_INFO("INVALID '{' -- state %d", state);
+                        LOG_INFO("INVALID '{' -- state %s", STATE_NAME(state));
                         valid = 0;
                         break;
                 }
@@ -222,7 +237,7 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
                     state = STATE_END;
                     break;
                 }
-                LOG_INFO("current %d", current);
+                SHOW_STATE("current", current);
                 state = state_after_value(current);
                 if (state == STATE_INVALID) {
                     LOG_INFO("INVALID ARRAY/HASH ELEM");
@@ -241,7 +256,7 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
                         state = STATE_HASH_KEY;
                         break;
                     default:
-                        LOG_INFO("INVALID ',' -- state %d", state);
+                        LOG_INFO("INVALID ',' -- state %s", STATE_NAME(state));
                         valid = 0;
                         break;
                 }
@@ -254,7 +269,7 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
                         state = STATE_HASH_VALUE;
                         break;
                     default:
-                        LOG_INFO("INVALID ':' -- state %d", state);
+                        LOG_INFO("INVALID ':' -- state %s", STATE_NAME(state));
                         valid = 0;
                         break;
                 }
