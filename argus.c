@@ -14,11 +14,6 @@
         ++cnt[pos]; \
     } while (0)
 
-enum Memory {
-    MEMORY_ARRAY,
-    MEMORY_HASH,
-};
-
 enum State {
     STATE_START,
     STATE_ARRAY_ELEM,
@@ -34,7 +29,7 @@ enum State {
 static int parse_string(Argus* argus, char quote, const char* ptr, int pos, int len);
 static int parse_number(Argus* argus, char c, const char* ptr, int pos, int len);
 static int parse_fixed(const char* fixed, int state, const char* ptr, int pos, int len);
-static int state_after_scalar(int state);
+static int state_after_value(int state);
 
 Argus* argus_create(void) {
     Argus* argus = (Argus*) malloc(sizeof(Argus));
@@ -59,7 +54,7 @@ void argus_clear(Argus* argus) {
 
 int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
     int valid = 1;
-    int popped = 0;
+    int current = 0;
     int state = STATE_START;
     int pos = 0;
     argus_clear(argus);
@@ -89,9 +84,9 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
                 break;
             }
             pos = n;
-            state = state_after_scalar(state);
+            state = state_after_value(state);
             if (state == STATE_INVALID) {
-                LOG_INFO("INVALID STRING");
+                LOG_INFO("INVALID STATE AFTER STRING");
                 valid = 0;
                 break;
             }
@@ -107,9 +102,9 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
                 break;
             }
             pos = n;
-            state = state_after_scalar(state);
+            state = state_after_value(state);
             if (state == STATE_INVALID) {
-                LOG_INFO("INVALID NUMBER");
+                LOG_INFO("INVALID STATE AFTER NUMBER");
                 valid = 0;
                 break;
             }
@@ -158,6 +153,7 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
         switch (c) {
             case '[':
                 LOG_INFO("BOA %d", stack_size(argus->stack) + 1);
+                current = state;
                 switch (state) {
                     case STATE_START:
                     case STATE_ARRAY_ELEM:
@@ -165,11 +161,11 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
                         state = STATE_ARRAY_ELEM;
                         break;
                     default:
-                        LOG_INFO("INVALID '['");
+                        LOG_INFO("INVALID '[' -- state %d", state);
                         valid = 0;
                         break;
                 }
-                if (stack_push(argus->stack, MEMORY_ARRAY)) {
+                if (stack_push(argus->stack, current)) {
                     LOG_INFO("OVERFLOW");
                     valid = 0;
                 }
@@ -177,42 +173,27 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
 
             case ']':
                 LOG_INFO("EOA %d", stack_size(argus->stack));
-                switch (state) {
-                    case STATE_ARRAY_ELEM:
-                    case STATE_ARRAY_COMMA:
-                        state = STATE_ARRAY_ELEM;
-                        break;
-                    default:
-                        LOG_INFO("INVALID ']', state %d", state);
-                        valid = 0;
-                        break;
-                }
-                if (stack_pop(argus->stack, &popped)) {
+                if (stack_pop(argus->stack, &current)) {
                     LOG_INFO("UNDERFLOW");
                     valid = 0;
                     break;
                 }
-                if (popped != MEMORY_ARRAY) {
-                    LOG_INFO("INVALID ARRAY");
-                    valid = 0;
-                    break;
-                }
-                if (stack_top(argus->stack, &popped)) {
+                if (stack_empty(argus->stack)) {
                     state = STATE_END;
                     break;
                 }
-                switch (popped) {
-                    case MEMORY_ARRAY:
-                        state = STATE_ARRAY_COMMA;
-                        break;
-                    case MEMORY_HASH:
-                        state = STATE_HASH_COMMA;
-                        break;
+                LOG_INFO("current %d", current);
+                state = state_after_value(current);
+                if (state == STATE_INVALID) {
+                    LOG_INFO("INVALID ARRAY/HASH ELEM");
+                    valid = 0;
+                    break;
                 }
                 break;
 
             case '{':
                 LOG_INFO("BOH %d", stack_size(argus->stack) + 1);
+                current = state;
                 switch (state) {
                     case STATE_START:
                     case STATE_ARRAY_ELEM:
@@ -220,11 +201,11 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
                         state = STATE_HASH_KEY;
                         break;
                     default:
-                        LOG_INFO("INVALID '{'");
+                        LOG_INFO("INVALID '{' -- state %d", state);
                         valid = 0;
                         break;
                 }
-                if (stack_push(argus->stack, MEMORY_HASH)) {
+                if (stack_push(argus->stack, current)) {
                     LOG_INFO("OVERFLOW");
                     valid = 0;
                 }
@@ -232,37 +213,21 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
 
             case '}':
                 LOG_INFO("EOH %d", stack_size(argus->stack));
-                switch (state) {
-                    case STATE_HASH_KEY:
-                    case STATE_HASH_COMMA:
-                        state = STATE_HASH_KEY;
-                        break;
-                    default:
-                        LOG_INFO("INVALID '}', state %d", state);
-                        valid = 0;
-                        break;
-                }
-                if (stack_pop(argus->stack, &popped)) {
+                if (stack_pop(argus->stack, &current)) {
                     LOG_INFO("UNDERFLOW");
                     valid = 0;
                     break;
                 }
-                if (popped != MEMORY_HASH) {
-                    LOG_INFO("INVALID HASH");
-                    valid = 0;
-                    break;
-                }
-                if (stack_top(argus->stack, &popped)) {
+                if (stack_empty(argus->stack)) {
                     state = STATE_END;
                     break;
                 }
-                switch (popped) {
-                    case MEMORY_ARRAY:
-                        state = STATE_ARRAY_COMMA;
-                        break;
-                    case MEMORY_HASH:
-                        state = STATE_HASH_COMMA;
-                        break;
+                LOG_INFO("current %d", current);
+                state = state_after_value(current);
+                if (state == STATE_INVALID) {
+                    LOG_INFO("INVALID ARRAY/HASH ELEM");
+                    valid = 0;
+                    break;
                 }
                 break;
 
@@ -276,7 +241,7 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
                         state = STATE_HASH_KEY;
                         break;
                     default:
-                        LOG_INFO("INVALID ','");
+                        LOG_INFO("INVALID ',' -- state %d", state);
                         valid = 0;
                         break;
                 }
@@ -289,7 +254,7 @@ int argus_parse_buffer(Argus* argus, const char* ptr, int len) {
                         state = STATE_HASH_VALUE;
                         break;
                     default:
-                        LOG_INFO("INVALID ':'");
+                        LOG_INFO("INVALID ':' -- state %d", state);
                         valid = 0;
                         break;
                 }
@@ -440,7 +405,7 @@ static int parse_fixed(const char* fixed, int state, const char* ptr, int pos, i
             state = STATE_INVALID;
             break;
         }
-        state = state_after_scalar(state);
+        state = state_after_value(state);
     } while (0);
 
     if (state != STATE_INVALID) {
@@ -449,7 +414,7 @@ static int parse_fixed(const char* fixed, int state, const char* ptr, int pos, i
     return state;
 }
 
-static int state_after_scalar(int state) {
+static int state_after_value(int state) {
     switch (state) {
         case STATE_START:
             state = STATE_END;

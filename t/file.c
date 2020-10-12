@@ -46,6 +46,11 @@ static void test_files(const char* dir, int expected) {
                 LOG_INFO("Skipping file [%s], wrong extension", entry->d_name);
                 continue;
             }
+#if 0
+            if (strcmp(entry->d_name, "01.json") != 0) {
+                continue;
+            }
+#endif
 
             LOG_INFO("File [%s]", entry->d_name);
             char file_name[2048];
