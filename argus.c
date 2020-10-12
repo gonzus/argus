@@ -373,6 +373,9 @@ static int parse_string(Argus* argus, char quote, const char* ptr, int pos, int 
             break;
         }
         if (c == '\\') {
+            if (pos >= len) {
+                break;
+            }
             c = ptr[pos++];
         }
         buffer_append_byte(argus->string, c);
