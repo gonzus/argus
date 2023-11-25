@@ -18,6 +18,7 @@ C_SRC_LIB = \
 	log.c \
 	buffer.c \
 	stack.c \
+	util.c \
 	argus.c \
 
 C_OBJ_LIB = $(C_SRC_LIB:.c=.o)
@@ -33,7 +34,7 @@ C_EXE_TEST = $(patsubst %.c, %, $(C_SRC_TEST))
 	cc $(CFLAGS) -c -o $@ $^
 
 $(C_EXE_TEST): %: %.o $(LIBRARY)
-	cc $(CFLAGS) $(LDFLAGS) -o $@ $^ -ltap -lpthread
+	cc $(CFLAGS) $(LDFLAGS) -o $@ $^ /usr/local/lib/libtap.a -lpthread
 
 tests: $(C_EXE_TEST)
 
